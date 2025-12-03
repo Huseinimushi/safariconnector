@@ -1,0 +1,181 @@
+:root{
+  --primary:#1B4D3E;     /* jungle green */
+  --secondary:#CBA135;   /* savanna gold */
+  --bg:#FAF8F3;          /* ivory */
+}
+
+/* page container */
+.page {
+  background: var(--bg);
+  min-height: 100vh;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* max width wrapper */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ---------- HERO ---------- */
+.hero {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  padding-top: 36px;
+  padding-bottom: 24px;
+}
+@media (min-width: 900px){
+  .hero { grid-template-columns: 1fr 1fr; }
+}
+.hero h1{ color: var(--primary); margin: 0; }
+.hero p { color:#334155; margin: 8px 0 0; }
+
+/* hero mosaic with fixed, safe proportions */
+.mosaic {
+  border: 1px solid #e5e7eb;
+  border-radius: 24px;
+  background: #fff;
+  overflow: hidden;
+  aspect-ratio: 4 / 3; /* keeps it from going tall */
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 8px;
+  padding: 8px;
+}
+.mosaic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 14px;
+}
+
+/* ---------- TRUST BAR ---------- */
+.trustgrid {
+  display: grid;
+  gap: 12px;
+}
+@media (min-width: 800px){
+  .trustgrid { grid-template-columns: repeat(3, 1fr); }
+}
+.trustcard{
+  background:#fff;
+  border:1px solid #e5e7eb;
+  border-radius: 16px;
+  padding: 16px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.04);
+}
+.trustcard .k { color: var(--secondary); font-weight: 700; font-size: 13px; }
+
+/* ---------- OPERATOR SPOTLIGHT (horizontal scroll) ---------- */
+.ops {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scroll-snap-type: x proximity;
+}
+.op {
+  min-width: 260px;
+  background: #fff;
+  border:1px solid #e5e7eb;
+  border-radius: 18px;
+  padding: 12px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.04);
+  scroll-snap-align: start;
+}
+.op-thumb{
+  aspect-ratio: 16/9;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.op-thumb img{ width:100%; height:100%; object-fit:cover; }
+
+/* ---------- DESTINATIONS GRID ---------- */
+.dest-grid{
+  display:grid;
+  gap:16px;
+  grid-template-columns:1fr;
+}
+@media (min-width: 700px){ .dest-grid{ grid-template-columns: repeat(2,1fr); } }
+@media (min-width: 1100px){ .dest-grid{ grid-template-columns: repeat(4,1fr); } }
+.dest-card{
+  background:#fff; border:1px solid #e5e7eb; border-radius:18px; overflow:hidden;
+  box-shadow: 0 2px 6px rgba(0,0,0,.04);
+}
+.dest-thumb{ aspect-ratio: 4/3; overflow:hidden; }
+.dest-thumb img{ width:100%; height:100%; object-fit:cover; transition: transform .2s ease; }
+.dest-card:hover .dest-thumb img{ transform: scale(1.03); }
+
+/* ---------- POPULAR GRID ---------- */
+.pop-grid{
+  display:grid; gap:16px; grid-template-columns:1fr;
+}
+@media (min-width: 900px){ .pop-grid{ grid-template-columns: repeat(3,1fr); } }
+.pop-card{
+  background:#fff; border:1px solid #e5e7eb; border-radius:18px; padding:16px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.04);
+}
+
+/* ---------- BADGES ---------- */
+.badge {
+  position:absolute; top:8px; left:8px;
+  background: var(--primary); color:#fff;
+  padding: 4px 10px; font-weight: 700; font-size: 12px; border-radius:999px;
+  box-shadow: 0 2px 6px rgba(0,0,0,.12);
+}
+.badge.right { left:auto; right:8px; }
+
+.page{--pad:16px; max-width:1120px; margin:0 auto; padding:0 var(--pad);}
+.container{max-width:1120px; margin:0 auto; padding:0 var(--pad);}
+.hero{display:grid; grid-template-columns:1.1fr .9fr; gap:24px; align-items:center; padding:32px 0 12px;}
+@media (max-width: 980px){ .hero{grid-template-columns:1fr; padding:20px 0;} }
+
+h1{color:var(--primary); font-weight:900; line-height:1.12; font-size:clamp(28px, 4vw, 44px);}
+p{color:#334155}
+
+/* Tabs */
+.tabs{display:inline-flex; background:#fff; border:1px solid #e5e7eb; padding:4px; border-radius:12px; box-shadow:0 2px 6px rgba(0,0,0,.04)}
+.tab{
+  padding:10px 14px; border-radius:8px; font-weight:700; color:var(--ink-soft); border:none; background:transparent;
+}
+.tab.active{background:var(--primary); color:#fff}
+.form{display:grid; gap:10px; grid-template-columns:repeat(4,1fr); background:#fff; border:1px solid #e5e7eb; padding:8px; border-radius:14px; margin-top:10px}
+.form input{border:1px solid #e2e8f0; padding:10px; border-radius:10px}
+.form button{border:none; border-radius:10px; padding:10px; font-weight:800}
+
+.mosaic{display:grid; grid-template-columns:2fr 1fr; grid-auto-rows: 140px; gap:8px; border-radius:16px; overflow:hidden; border:1px solid #e5e7eb; background:#fff}
+.mosaic img{width:100%; height:100%; object-fit:cover}
+.mosaic img:nth-child(1){grid-column:1/2; grid-row:1/3;}
+.mosaic img:nth-child(2){grid-column:2/3; grid-row:1/2;}
+.mosaic img:nth-child(3){grid-column:2/3; grid-row:2/3;}
+.mosaic img:nth-child(4){grid-column:1/3; grid-row:3/4;}
+.badge{position:absolute; left:8px; top:8px; background:var(--primary); color:#fff; padding:6px 10px; border-radius:999px; font-size:12px; font-weight:800}
+.badge.right{left:auto; right:8px}
+
+/* Trust cards */
+.trustgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:12px}
+.trustcard{background:#fff; border:1px solid #e5e7eb; border-radius:14px; padding:14px}
+.trustcard .k{font-size:12px; color:var(--secondary); font-weight:800; letter-spacing:.06em}
+.trustcard .t{font-weight:800}
+
+/* Operator strip */
+.ops{display:flex; gap:12px; overflow-x:auto; padding-bottom:4px}
+.op{min-width:260px; background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:10px; box-shadow:0 1px 4px rgba(0,0,0,.03)}
+.op-thumb{border-radius:12px; overflow:hidden; aspect-ratio:16/9; background:#f1f5f9}
+.op-thumb img{width:100%; height:100%; object-fit:cover}
+
+/* Destinations */
+.dest-grid{display:grid; gap:12px; grid-template-columns:repeat(4,1fr)}
+@media (max-width: 980px){ .dest-grid{grid-template-columns:repeat(2,1fr)} }
+.dest-card{background:#fff; border:1px solid #e5e7eb; border-radius:16px; overflow:hidden; box-shadow:0 1px 4px rgba(0,0,0,.03)}
+.dest-thumb{aspect-ratio:4/3; overflow:hidden}
+.dest-thumb img{width:100%; height:100%; object-fit:cover; transition:transform .25s}
+.dest-card:hover .dest-thumb img{transform:scale(1.03)}
+
+/* Popular */
+.pop-grid{display:grid; gap:12px; grid-template-columns:repeat(3,1fr)}
+@media (max-width: 980px){ .pop-grid{grid-template-columns:1fr} }
+.pop-card{display:block; background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:14px; box-shadow:0 1px 4px rgba(0,0,0,.03)}

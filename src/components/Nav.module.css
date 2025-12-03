@@ -1,0 +1,152 @@
+/* HEADER */
+.header {
+  width: 100%;
+  background: #f4f3ed;
+  border-bottom: 1px solid #e0ded6;
+  font-family: Inter, sans-serif;
+}
+
+/* TOP BAR */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 40px;
+  background: #0b6b3a;
+  color: white;
+  font-size: 13px;
+}
+
+.topLeft {
+  display: flex;
+  gap: 16px;
+}
+
+.topRight {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.topLink {
+  color: white;
+  text-decoration: none;
+  padding: 4px 12px;
+  border: 1px solid #ffffff6c;
+  border-radius: 50px;
+  transition: 0.2s ease;
+}
+.topLink:hover {
+  background: white;
+  color: #0b6b3a;
+}
+
+/* SOCIAL ICONS */
+.socials {
+  display: flex;
+  gap: 10px;
+  font-size: 17px;
+}
+.socials a {
+  color: white;
+  opacity: 0.85;
+  transition: 0.2s;
+}
+.socials a:hover {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+/* MAIN NAV */
+.navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 40px;
+  background: #f4f3ed;
+}
+
+/* LOGO — CENTER-LEANING & BIGGER */
+.logoArea {
+  flex: 1.7; /* push logo closer to center */
+  display: flex;
+  justify-content: flex-end;
+  padding-right: 40px;
+}
+
+.logoLink {
+  display: inline-flex;
+  align-items: center;
+}
+
+.logoImage {
+  height: 90px; /* BIG & CLEAR */
+  width: auto;
+}
+
+/* MAIN MENU CENTER */
+.navCenter {
+  flex: 3;
+  list-style: none;
+  display: flex;
+  justify-content: center;
+  gap: 34px;
+  font-size: 16px;
+}
+
+.navCenter a {
+  text-decoration: none;
+  color: #0b6b3a;
+  font-weight: 600;
+}
+
+/* ACTIVE LINK */
+.active a {
+  position: relative;
+}
+.active a::after {
+  content: "";
+  position: absolute;
+  height: 2px;
+  width: 100%;
+  left: 0;
+  bottom: -5px;
+  background: #0b6b3a;
+  border-radius: 2px;
+}
+
+/* RIGHT SIDE — SEARCH */
+.rightTools {
+  flex: 1.5;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.searchWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 10px;
+  font-size: 18px;
+  color: #0b6b3a;
+}
+
+.searchInput {
+  padding: 7px 12px 7px 34px;
+  border: 1px solid #0b6b3a;
+  border-radius: 50px;
+  font-size: 14px;
+  width: 140px;
+  transition: 0.2s;
+  color: #0b6b3a;
+  background: white;
+}
+
+.searchInput:focus {
+  width: 200px;
+  outline: none;
+}
