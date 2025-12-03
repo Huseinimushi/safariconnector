@@ -19,6 +19,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        {/* Important for mobile responsiveness */}
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+
         {/* Global stylesheet served from /public */}
         <link rel="stylesheet" href="/sc-globals.css" />
       </head>
