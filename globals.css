@@ -1,19 +1,83 @@
-:root{
-  --primary:#1B4D3E; /* Jungle Green */
-  --secondary:#CBA135;/* Savanna Gold */
-  --bg:#FAF8F3;       /* Ivory */
-  --ink:#163b30;
+/* ============================
+   Safari Connector – Global Styles
+   File: /public/sc-globals.css
+   ============================ */
+
+/* ---------- TOKENS / ROOT ---------- */
+:root {
+  /* Main brand palette */
+  --primary: #1B4D3E;          /* Jungle Green */
+  --secondary: #CBA135;        /* Savanna Gold */
+  --bg: #FAF8F3;               /* Ivory */
+  --ink: #163b30;
+
+  --brand-primary: #0B7A53;
+  --brand-primary-dark: #075E40;
+  --brand-primary-light: #D6EFE5;
+  --brand-accent: #F4A01C;
+
+  --hair: #eae7df;
+  --ink-soft: #38564C;
+  --muted: #6b7280;
 }
 
-body{ background:var(--bg); color:var(--ink); }
+/* Box sizing & body base */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
-/* ---------- HEADER ---------- */
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+}
+
+/* Global page wrapper – tumia hii kwenye pages kubwa kama ukitaka
+   <main className="sc-page">...</main> */
+.sc-page {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem;
+}
+
+@media (min-width: 768px) {
+  .sc-page {
+    padding: 2.5rem 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .sc-page {
+    padding: 3rem 0;
+  }
+}
+
+/* ---------- TYPOGRAPHY HELPERS ---------- */
+
+.h1-tight {
+  font-size: 1.875rem;
+  line-height: 2.25rem; /* text-3xl */
+}
+
+@media (min-width: 768px) {
+  .h1-tight {
+    font-size: 2.25rem;
+    line-height: 2.5rem; /* md:text-4xl */
+  }
+}
+
+/* ---------- HEADER / NAV ---------- */
+
 .nav-root {
   position: sticky;
   top: 0;
   z-index: 40;
-  background: var(--bg, #FAF8F3);
-  border-bottom: 1px solid var(--hair, #eae7df);
+  background: var(--bg);
+  border-bottom: 1px solid var(--hair);
   backdrop-filter: saturate(1.1) blur(8px);
 }
 
@@ -25,12 +89,14 @@ body{ background:var(--bg); color:var(--ink); }
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: nowrap;
 }
 
 .nav-brand {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .nav-logo {
@@ -45,10 +111,11 @@ body{ background:var(--bg); color:var(--ink); }
   gap: 16px;
   flex: 1;
   justify-content: center;
+  flex-wrap: wrap;
 }
 
 .nav-link {
-  color: var(--ink, #163c31);
+  color: var(--ink);
   text-decoration: none;
   font-weight: 600;
   font-size: 15px;
@@ -59,12 +126,12 @@ body{ background:var(--bg); color:var(--ink); }
 
 .nav-link:hover {
   background: rgba(27, 77, 62, 0.08);
-  color: var(--primary, #1B4D3E);
+  color: var(--primary);
 }
 
 .nav-link.active {
   color: #fff;
-  background: var(--primary, #1B4D3E);
+  background: var(--primary);
 }
 
 .nav-actions {
@@ -73,6 +140,7 @@ body{ background:var(--bg); color:var(--ink); }
   gap: 8px;
 }
 
+/* Generic button style */
 .btn {
   text-decoration: none;
   font-weight: 600;
@@ -81,10 +149,11 @@ body{ background:var(--bg); color:var(--ink); }
   padding: 6px 12px;
   border: 1px solid transparent;
   transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 .btn.primary {
-  background: var(--primary, #1B4D3E);
+  background: var(--primary);
   color: #fff;
 }
 
@@ -93,42 +162,54 @@ body{ background:var(--bg); color:var(--ink); }
 }
 
 .btn.ghost {
-  color: var(--primary, #1B4D3E);
-  border: 1px solid var(--primary, #1B4D3E);
+  color: var(--primary);
+  border: 1px solid var(--primary);
 }
 
 .btn.ghost:hover {
-  background: var(--primary, #1B4D3E);
+  background: var(--primary);
   color: #fff;
 }
 
-/* Mobile view */
+/* Mobile / small screens */
 @media (max-width: 900px) {
-  .nav-links {
-    display: none;
-  }
-
-  .nav-actions {
-    margin-left: auto;
-  }
-
   .nav-inner {
     padding: 6px 12px;
+    gap: 10px;
   }
 
   .nav-logo {
     width: 100px;
   }
+
+  .nav-links {
+    display: none; /* ukitaka tuletee hamburger baadaye */
+  }
+
+  .nav-actions {
+    margin-left: auto;
+  }
 }
 
+/* Ultra small devices kujikinga */
+@media (max-width: 420px) {
+  .nav-inner {
+    gap: 6px;
+  }
 
-/* Footer */
-/* ---------- Footer Enhanced ---------- */
+  .btn {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+}
+
+/* ---------- FOOTER ---------- */
+
 .footer {
-  background: linear-gradient(180deg, #FAF8F3 0%, #FFF8E5 100%); /* ivory → soft gold */
-  border-top: 1px solid var(--hair, #eae7df);
-  box-shadow: 0 -2px 12px rgba(0,0,0,0.05);
-  color: var(--ink, #163c31);
+  background: linear-gradient(180deg, #FAF8F3 0%, #FFF8E5 100%);
+  border-top: 1px solid var(--hair);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.05);
+  color: var(--ink);
 }
 
 .footer-inner {
@@ -154,21 +235,21 @@ body{ background:var(--bg); color:var(--ink); }
 
 .footer-intro {
   font-size: 14px;
-  color: var(--ink-soft, #38564C);
+  color: var(--ink-soft);
   max-width: 320px;
   line-height: 1.45;
 }
 
 .footer-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0,1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 24px;
 }
 
 .footer-h {
   font-weight: 800;
   font-size: 16px;
-  color: var(--ink, #163c31);
+  color: var(--ink);
   margin: 0 0 8px;
   text-transform: uppercase;
 }
@@ -182,7 +263,7 @@ body{ background:var(--bg); color:var(--ink); }
 }
 
 .footer-link {
-  color: var(--ink-soft, #38564C);
+  color: var(--ink-soft);
   text-decoration: none;
   font-size: 14px;
   line-height: 1.3;
@@ -190,7 +271,7 @@ body{ background:var(--bg); color:var(--ink); }
 }
 
 .footer-link:hover {
-  color: var(--primary, #1B4D3E);
+  color: var(--primary);
   transform: translateX(2px);
 }
 
@@ -207,37 +288,38 @@ body{ background:var(--bg); color:var(--ink); }
   width: 34px;
   height: 34px;
   border-radius: 999px;
-  border: 1px solid var(--hair, #eae7df);
-  color: var(--ink-soft, #38564C);
+  border: 1px solid var(--hair);
+  color: var(--ink-soft);
   background: #fff;
   transition: all 0.2s ease;
 }
 
 .footer-social-btn:hover {
   color: #fff;
-  background: var(--primary, #1B4D3E);
-  border-color: var(--primary, #1B4D3E);
+  background: var(--primary);
+  border-color: var(--primary);
   transform: translateY(-2px);
 }
 
 .footer-copy {
-  border-top: 1px solid rgba(0,0,0,0.06);
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
   text-align: center;
   padding: 12px;
   font-size: 13px;
-  color: var(--muted, #6b7280);
-  background: rgba(255,255,255,0.3);
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.3);
   backdrop-filter: blur(2px);
 }
 
-/* responsive */
+/* Footer responsive */
 @media (max-width: 980px) {
   .footer-inner {
     grid-template-columns: 1fr;
     gap: 20px;
   }
+
   .footer-grid {
-    grid-template-columns: repeat(2, minmax(0,1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -245,21 +327,8 @@ body{ background:var(--bg); color:var(--ink); }
   .footer-grid {
     grid-template-columns: 1fr 1fr;
   }
-  .footer-logo { width: 150px; }
-}
-/* globals.css */
-.h1-tight { font-size: 1.875rem; line-height: 2.25rem; } /* text-3xl */
-@media (min-width: 768px) {
-  .h1-tight { font-size: 2.25rem; line-height: 2.5rem; } /* md:text-4xl */
-}
-/* globals.css */
-:root{
-  --brand-primary:#0B7A53;
-  --brand-primary-dark:#075E40;
-  --brand-primary-light:#D6EFE5;
-  --brand-accent:#F4A01C;
-}
 
-/* (optional) punguza ukubwa wa H1 kwenye content pages */
-.h1-tight { font-size: 1.875rem; line-height: 2.25rem; } /* text-3xl */
-@media (min-width:768px){ .h1-tight { font-size: 2.25rem; line-height: 2.5rem; } } /* md:text-4xl */
+  .footer-logo {
+    width: 150px;
+  }
+}

@@ -87,28 +87,11 @@ export default async function HomePage() {
       : "tailor-made safaris";
 
   return (
-    <main
-      style={{
-        maxWidth: 1250,
-        margin: "0 auto",
-        padding: "0 16px 72px",
-        background: "#F3F4EF",
-      }}
-    >
+    <main className="home-shell">
       {/* ───────────────── HERO ───────────────── */}
-      <section
-        style={{
-          marginTop: 24,
-          borderRadius: 32,
-          overflow: "hidden",
-          border: "1px solid #E5E7EB",
-          position: "relative",
-          background: "#05291F",
-          boxShadow: "0 22px 55px rgba(0,0,0,0.45)",
-        }}
-      >
+      <section className="home-hero">
         {/* Background image */}
-        <div style={{ position: "relative", height: 420 }}>
+        <div className="home-hero-bg">
           <Image
             src={heroBg}
             alt="Safari Connector"
@@ -116,29 +99,13 @@ export default async function HomePage() {
             className="object-cover"
             priority
           />
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              background:
-                "radial-gradient(circle at 20% 20%, rgba(11,123,83,0.55), transparent 60%), linear-gradient(120deg, rgba(0,0,0,0.9), rgba(0,0,0,0.25))",
-            }}
-          />
+          <div className="home-hero-overlay" />
         </div>
 
         {/* Hero content */}
-        <div
-          style={{
-            position: "absolute",
-            inset: 0,
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 2.2fr) minmax(0, 1.4fr)",
-            padding: "32px 32px 24px",
-            gap: 24,
-          }}
-        >
+        <div className="home-hero-grid">
           {/* LEFT: text + CTAs */}
-          <div style={{ alignSelf: "center", maxWidth: 640 }}>
+          <div className="home-hero-left">
             {/* Dynamic activity pill */}
             <div
               style={{
@@ -194,7 +161,14 @@ export default async function HomePage() {
               Africa — all inside one clean marketplace.
             </p>
 
-            <div style={{ display: "flex", gap: 12, marginTop: 20 }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                marginTop: 20,
+                flexWrap: "wrap",
+              }}
+            >
               <Link href="/plan">
                 <Button
                   style={{
@@ -256,14 +230,7 @@ export default async function HomePage() {
           </div>
 
           {/* RIGHT: glass card */}
-          <div
-            style={{
-              alignSelf: "center",
-              justifySelf: "flex-end",
-              maxWidth: 360,
-              width: "100%",
-            }}
-          >
+          <div className="home-hero-right">
             <div
               style={{
                 background: "rgba(15,23,42,0.88)",
@@ -326,28 +293,8 @@ export default async function HomePage() {
         </div>
 
         {/* Stats strip at bottom of hero */}
-        <div
-          style={{
-            position: "absolute",
-            left: 24,
-            right: 24,
-            bottom: 18,
-          }}
-        >
-          <div
-            style={{
-              background: "rgba(249,250,251,0.98)",
-              borderRadius: 999,
-              padding: "7px 18px",
-              border: "1px solid #E5E7EB",
-              display: "inline-flex",
-              gap: 16,
-              fontSize: 12,
-              fontWeight: 600,
-              color: "#111827",
-              boxShadow: "0 10px 24px rgba(0,0,0,.25)",
-            }}
-          >
+        <div className="home-hero-stats-wrap">
+          <div className="home-hero-stats">
             <span>🌍 {stats.trips}+ curated trips</span>
             <span>•</span>
             <span>{stats.operators}+ vetted operators</span>
@@ -365,13 +312,7 @@ export default async function HomePage() {
             subtitle="Based on real trips listed on Safari Connector."
             href="/trips"
           />
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(6, minmax(0,1fr))",
-              gap: 14,
-            }}
-          >
+          <div className="home-grid-dests">
             {popularDestinations.map((name) => (
               <DestinationCard key={name} name={name} img={DEST_IMG[name]} />
             ))}
@@ -390,13 +331,7 @@ export default async function HomePage() {
         {trips.length === 0 ? (
           <EmptyCard text="No trips published yet. Check back soon." />
         ) : (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(4, minmax(0,1fr))",
-              gap: 16,
-            }}
-          >
+          <div className="home-grid-trips">
             {trips.slice(0, 4).map((t, index) => (
               <TripCard
                 key={t.id}
@@ -439,14 +374,7 @@ export default async function HomePage() {
             experts.
           </p>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0,1fr))",
-              gap: 14,
-              marginTop: 16,
-            }}
-          >
+          <div className="home-grid-steps">
             <StepCard
               step="01"
               title="Design your safari"
@@ -475,13 +403,7 @@ export default async function HomePage() {
             href="/operators"
           />
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(3, minmax(0,1fr))",
-              gap: 16,
-            }}
-          >
+          <div className="home-grid-ops">
             {operators.slice(0, 3).map((op) => (
               <OperatorCard key={op.id} op={op} />
             ))}
@@ -490,18 +412,7 @@ export default async function HomePage() {
       )}
 
       {/* ───────────────── TRUST STRIP ───────────────── */}
-      <section
-        style={{
-          marginTop: 44,
-          border: "1px solid #E5E7EB",
-          borderRadius: 20,
-          background: "#FFFFFF",
-          padding: 18,
-          display: "grid",
-          gridTemplateColumns: "repeat(3, minmax(0,1fr))",
-          gap: 12,
-        }}
-      >
+      <section className="home-grid-trust">
         <TrustItem
           title="Verified local partners"
           text="We work with licensed, vetted operators — many born and raised near the parks they guide."
