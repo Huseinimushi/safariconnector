@@ -4,6 +4,18 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/authServer";
+import { createClient } from "@supabase/supabase-js";
+import { Resend } from "resend";
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+const resendApiKey = process.env.RESEND_API_KEY;
+const resend = resendApiKey ? new Resend(resendApiKey) : null;
+
+const FROM_EMAIL = process.env.EMAIL_FROM || "no-reply@safariconnector.com";
+const ADMIN_EMAIL =
+  process.env.ADMIN_NOTIF_EMAIL || "info@safariconnector.com";
 
 /**
  * POST /api/quotes
@@ -68,17 +80,97 @@ export async function POST(req: NextRequest) {
         req.headers.get("x-real-ip") ??
         "unknown";
 
+      const userAgent = req.headers.get("user-agent") ?? "unknown";
+
       console.log("PUBLIC QUOTE REQUEST", {
         ...payload,
         ip,
-        ua: req.headers.get("user-agent"),
+        ua: userAgent,
         receivedAt: new Date().toISOString(),
       });
 
-      // TODO:
-      // - Insert into `quote_requests`
-      // - Notify operator
-      // - Rate-limit by IP
+      // ---------- (a) Save to Supabase ----------
+      const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+      const { error: insertError } = await supabase.from("quote_requests").insert({
+        trip_id: payload.trip_id,
+        trip_title: payload.trip_title ?? null,
+        date: payload.date,
+        pax: payload.pax ?? 1,
+        name: payload.name,
+        email: payload.email,
+        phone: payload.phone ?? null,
+        note: payload.note ?? null,
+        ip,
+        user_agent: userAgent,
+      });
+
+      if (insertError) {
+        console.error("Error inserting quote_requests:", insertError);
+        // bado tunamjibu user OK ili asione error ya system
+      }
+
+      // ---------- (b) Send emails (if RESEND configured) ----------
+      if (resend) {
+        const tripLabel =
+          payload.trip_title && payload.trip_title.trim().length > 0
+            ? payload.trip_title
+            : "Safari trip";
+
+        // Email kwa admin / internal
+        resend.emails
+          .send({
+            from: FROM_EMAIL,
+            to: ADMIN_EMAIL,
+            subject: `New quote request – ${tripLabel}`,
+            html: `
+              <p>New quote request received on <b>Safari Connector</b>.</p>
+              <p><b>Trip:</b> ${tripLabel} (${payload.trip_id})</p>
+              <p><b>Date:</b> ${payload.date}</p>
+              <p><b>Pax:</b> ${payload.pax ?? 1}</p>
+              <p><b>Name:</b> ${payload.name}</p>
+              <p><b>Email:</b> ${payload.email}</p>
+              ${
+                payload.phone
+                  ? `<p><b>Phone:</b> ${payload.phone}</p>`
+                  : ""
+              }
+              ${
+                payload.note
+                  ? `<p><b>Note:</b><br/>${payload.note}</p>`
+                  : ""
+              }
+              <hr/>
+              <p><b>IP:</b> ${ip}</p>
+              <p><b>User-Agent:</b> ${userAgent}</p>
+            `,
+          })
+          .catch((err) =>
+            console.error("Error sending admin quote email:", err)
+          );
+
+        // Email kwa traveller – confirmation
+        resend.emails
+          .send({
+            from: FROM_EMAIL,
+            to: payload.email!,
+            subject: "We received your safari quote request",
+            html: `
+              <p>Hi ${payload.name},</p>
+              <p>Thanks for using <b>Safari Connector</b>.</p>
+              <p>We have received your request for <b>${tripLabel}</b> on <b>${
+              payload.date
+            }</b> for <b>${payload.pax ?? 1}</b> traveller(s).</p>
+              <p>Our team and/or local operators will review your request and get back to you with tailored offers.</p>
+              <p>If you didn't make this request, you can ignore this email.</p>
+            `,
+          })
+          .catch((err) =>
+            console.error("Error sending traveller confirmation email:", err)
+          );
+      } else {
+        console.warn("RESEND_API_KEY not set – skipping emails for quote.");
+      }
 
       return NextResponse.json({ ok: true });
     }
@@ -143,7 +235,6 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ quote_id: data?.id }, { status: 201 });
-
   } catch (e: any) {
     if (e?.message === "Not authenticated") {
       return NextResponse.json(
@@ -151,6 +242,7 @@ export async function POST(req: NextRequest) {
         { status: 401 }
       );
     }
+    console.error("Unexpected error in /api/quotes:", e);
     return NextResponse.json(
       { error: e?.message || "Unexpected error" },
       { status: 500 }
