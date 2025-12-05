@@ -20,66 +20,113 @@ export default function Nav() {
   const pathname = usePathname();
   const router = useRouter();
 
-  // status ya login ya traveller (global Supabase user)
-  const [travellerLoggedIn, setTravellerLoggedIn] = useState(false);
+  const [hasUser, setHasUser] = useState(false);
+  const [isOperator, setIsOperator] = useState(false);
 
   useEffect(() => {
-    let isMounted = true;
+    let active = true;
 
-    const syncUser = async () => {
+    const determineFromUser = async (user: any | null) => {
+      if (!active) return;
+
+      if (!user) {
+        setHasUser(false);
+        setIsOperator(false);
+        return;
+      }
+
+      setHasUser(true);
+
       try {
-        const { data, error } = await supabase.auth.getUser();
+        // 🔍 check kama huyu user ana operator profile
+        const { data, error } = await supabase
+          .from("operators")
+          .select("id")
+          .eq("user_id", user.id)
+          .maybeSingle();
 
-        if (!isMounted) return;
+        if (!active) return;
 
-        if (error || !data?.user) {
-          setTravellerLoggedIn(false);
-        } else {
-          setTravellerLoggedIn(true);
+        if (error) {
+          console.error("Nav operators lookup error:", error);
+          setIsOperator(false);
+          return;
         }
+
+        setIsOperator(!!data);
       } catch (err) {
-        console.error("Nav traveller check error:", err);
-        if (isMounted) setTravellerLoggedIn(false);
+        console.error("Nav operators lookup exception:", err);
+        if (active) setIsOperator(false);
       }
     };
 
-    // 1) check on mount & on route change
-    syncUser();
+    const fetchUser = async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        await determineFromUser(data?.user ?? null);
+      } catch (err) {
+        console.error("Nav auth check error:", err);
+        if (active) {
+          setHasUser(false);
+          setIsOperator(false);
+        }
+      }
+    };
 
-    // 2) sikiliza mabadiliko ya auth (login/logout) pia
-    const { data: authListener } = supabase.auth.onAuthStateChange(
+    fetchUser();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
-        if (!isMounted) return;
-        setTravellerLoggedIn(!!session?.user);
+        determineFromUser(session?.user ?? null);
       }
     );
 
     return () => {
-      isMounted = false;
-      authListener?.subscription.unsubscribe();
+      active = false;
+      listener.subscription.unsubscribe();
     };
   }, [pathname]);
 
-  const isActiveExact = (path: string) => pathname === path;
-  const isActivePrefix = (prefix: string) =>
-    pathname === prefix || pathname?.startsWith(`${prefix}/`);
+  // ------------------------------------------------
+  // LABELS KWA MANTIKI ULIYOTAKA
+  // ------------------------------------------------
 
-  const navLinkClass = (active: boolean) =>
-    `nav-link${active ? " active" : ""}`;
+  // Kama user ka-login na SI operator → My Account
+  // Kama operator au hakuna user → Login as Traveller
+  const travellerLabel =
+    hasUser && !isOperator ? "My Account" : "Login as Traveller";
+
+  // Kama operator → My Dashboard
+  // Wengine wote (traveller au no user) → Login as Operator
+  const operatorLabel = isOperator ? "My Dashboard" : "Login as Operator";
+
+  // ------------------------------------------------
+  // CLICK HANDLERS
+  // ------------------------------------------------
 
   const handleTravellerClick = () => {
-    if (travellerLoggedIn) {
-      // tayari ka-login → mpeleke kwenye account
+    if (hasUser && !isOperator) {
+      // Logged-in non-operator (Traveller / normal user)
       router.push("/traveller/dashboard");
-      // ukitaka badala yake profile:
+      // ukitaka iwe profile:
       // router.push("/traveller/profile");
     } else {
-      // haja-login → mpeleke login
+      // Either not logged in OR ni operator
       router.push("/login/traveller");
     }
   };
 
-  const travellerLabel = travellerLoggedIn ? "My Account" : "Login as Traveller";
+  const handleOperatorClick = () => {
+    if (isOperator) {
+      router.push("/operators/dashboard");
+      // au kama dashboard yako ni /operators:
+      // router.push("/operators");
+    } else {
+      router.push("/operators/login");
+    }
+  };
+
+  // ------------------------------------------------
 
   return (
     <header className="nav-root">
@@ -114,7 +161,7 @@ export default function Nav() {
             }}
           >
             <div style={{ display: "flex", gap: 8 }}>
-              {/* Traveller button – muonekano ule ule */}
+              {/* Traveller Button */}
               <button
                 type="button"
                 onClick={handleTravellerClick}
@@ -130,19 +177,21 @@ export default function Nav() {
                 {travellerLabel}
               </button>
 
-              {/* Operator login unchanged */}
-              <Link
-                href="/operators/login"
+              {/* Operator Button */}
+              <button
+                type="button"
+                onClick={handleOperatorClick}
                 className="btn ghost"
                 style={{
                   borderColor: "#ffffff",
                   color: "#ffffff",
                   padding: "6px 12px",
                   fontSize: "13px",
+                  background: "transparent",
                 }}
               >
-                Login as Operator
-              </Link>
+                {operatorLabel}
+              </button>
             </div>
 
             <div
@@ -210,30 +259,42 @@ export default function Nav() {
         <nav className="nav-links">
           <Link
             href="/trips"
-            className={navLinkClass(isActivePrefix("/trips"))}
+            className={`nav-link${
+              pathname === "/trips" || pathname?.startsWith("/trips/")
+                ? " active"
+                : ""
+            }`}
           >
             Browse Trips
           </Link>
 
           <Link
             href="/tour-operators"
-            className={navLinkClass(
-              isActivePrefix("/tour-operators") || isActivePrefix("/operators")
-            )}
+            className={`nav-link${
+              pathname === "/tour-operators" ||
+              pathname?.startsWith("/tour-operators/") ||
+              pathname?.startsWith("/operators")
+                ? " active"
+                : ""
+            }`}
           >
             Tour Operators
           </Link>
 
           <Link
             href="/plan"
-            className={navLinkClass(isActivePrefix("/plan"))}
+            className={`nav-link${
+              pathname === "/plan" ? " active" : ""
+            }`}
           >
             AI Trip Builder
           </Link>
 
           <Link
             href="/about"
-            className={navLinkClass(isActiveExact("/about"))}
+            className={`nav-link${
+              pathname === "/about" ? " active" : ""
+            }`}
           >
             About
           </Link>

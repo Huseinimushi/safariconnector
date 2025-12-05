@@ -8,9 +8,9 @@ type Props = {
   className?: string;
 };
 
-export default function TravellerAccountButton({ className }: Props) {
+export default function OperatorAccountButton({ className }: Props) {
   const router = useRouter();
-  const [isTraveller, setIsTraveller] = useState(false);
+  const [isOperator, setIsOperator] = useState(false);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -18,7 +18,7 @@ export default function TravellerAccountButton({ className }: Props) {
         const { data, error } = await supabase.auth.getUser();
 
         if (error || !data?.user) {
-          setIsTraveller(false);
+          setIsOperator(false);
           return;
         }
 
@@ -30,25 +30,20 @@ export default function TravellerAccountButton({ className }: Props) {
           null;
 
         const normalized = rawRole ? rawRole.toLowerCase() : null;
-
-        const isOperator = normalized === "operator";
-
-        // ✅ Traveller / normal user = any logged-in user who is NOT operator
-        setIsTraveller(!isOperator);
+        setIsOperator(normalized === "operator");
       } catch (err) {
-        console.error("TravellerAccountButton auth error:", err);
-        setIsTraveller(false);
+        console.error("OperatorAccountButton auth error:", err);
+        setIsOperator(false);
       }
     };
 
     checkUser();
 
-    // pia tusikilize mabadiliko ya login/logout
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         const user = session?.user;
         if (!user) {
-          setIsTraveller(false);
+          setIsOperator(false);
           return;
         }
 
@@ -58,8 +53,7 @@ export default function TravellerAccountButton({ className }: Props) {
           null;
 
         const normalized = rawRole ? rawRole.toLowerCase() : null;
-        const isOperator = normalized === "operator";
-        setIsTraveller(!isOperator);
+        setIsOperator(normalized === "operator");
       }
     );
 
@@ -69,18 +63,18 @@ export default function TravellerAccountButton({ className }: Props) {
   }, []);
 
   const handleClick = () => {
-    if (isTraveller) {
-      // ✅ Traveller / normal user → dashboard/profile
-      router.push("/traveller/dashboard");
-      // ukitaka iwe profile badala yake:
-      // router.push("/traveller/profile");
+    if (isOperator) {
+      // ✅ Already operator → dashboard
+      router.push("/operators/dashboard");
+      // kama dashboard yako ni /operators tu:
+      // router.push("/operators");
     } else {
-      // ❌ Not logged in OR ni operator → login page ya traveller
-      router.push("/login/traveller");
+      // ❌ Not operator / not logged in → operator login
+      router.push("/operators/login");
     }
   };
 
-  const label = isTraveller ? "My Account" : "Login as Traveller";
+  const label = isOperator ? "My Dashboard" : "Login as Operator";
 
   return (
     <button type="button" onClick={handleClick} className={className}>
