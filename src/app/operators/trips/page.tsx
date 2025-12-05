@@ -3,6 +3,7 @@
 
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
 const BRAND_GREEN = "#0B6B3A";
 const BRAND_GOLD = "#D4A017";
@@ -25,7 +26,7 @@ type QuoteRow = {
 type TripRow = {
   id: string;
   title: string;
-  status: string;
+  status: string | null;
   price_from: number | null;
 };
 
@@ -41,25 +42,6 @@ function isAIQuote(message: string | null | undefined): boolean {
   );
 }
 
-/**
- * Tunajua AI Trip Builder hutengeneza message kwa format:
- *
- * Enquiry generated...
- *
- * Name: ...
- * Destination: ...
- * Days: ...
- * Preferred date: ...
- * Budget: ...
- * Group type: ...
- * Style: ...
- * Experiences: ...
- *
- * Suggested itinerary:
- * Day 1: ...
- * Day 2: ...
- * ...
- */
 function parseAIQuote(message: string): ParsedAIQuote {
   const lines = message.split("\n").map((l) => l.trim());
   const meta: Record<string, string> = {};
@@ -76,7 +58,6 @@ function parseAIQuote(message: string): ParsedAIQuote {
     }
 
     if (!inItinerary) {
-      // meta line
       const idx = line.indexOf(":");
       if (idx > 0) {
         const key = line.slice(0, idx).trim();
@@ -84,7 +65,6 @@ function parseAIQuote(message: string): ParsedAIQuote {
         meta[key] = value;
       }
     } else {
-      // itinerary day
       days.push(line);
     }
   }
@@ -93,6 +73,8 @@ function parseAIQuote(message: string): ParsedAIQuote {
 }
 
 export default function OperatorDashboard() {
+  const router = useRouter();
+
   const [operator, setOperator] = useState<OperatorRow | null>(null);
   const [quotes, setQuotes] = useState<QuoteRow[]>([]);
   const [trips, setTrips] = useState<TripRow[]>([]);
@@ -102,8 +84,9 @@ export default function OperatorDashboard() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
+      setMsg(null);
 
-      // 1. CHECK AUTH
+      // 1. AUTH
       const {
         data: { user },
         error: authError,
@@ -115,7 +98,7 @@ export default function OperatorDashboard() {
         return;
       }
 
-      // 2. LOAD OPERATOR PROFILE
+      // 2. OPERATOR PROFILE
       const { data: op, error: opError } = await supabase
         .from("operators")
         .select("id, company_name, status")
@@ -137,31 +120,69 @@ export default function OperatorDashboard() {
 
       setOperator(op);
 
-      // 3. LOAD QUOTES
+      // 3. QUOTES – format ile ile ya zamani (haina trip_id)
       const { data: q, error: qError } = await supabase
         .from("operator_quotes")
         .select("id, full_name, email, message, created_at")
         .eq("operator_id", op.id)
         .order("created_at", { ascending: false });
 
-      if (qError) console.error("quote load error:", qError);
-      else setQuotes(q || []);
+      if (qError) {
+        console.error("quote load error:", qError);
+        setQuotes([]);
+      } else {
+        setQuotes((q || []) as QuoteRow[]);
+      }
 
-      // 4. LOAD TRIPS
+      // 4. TRIPS — trips.operator_id = operators.id
       const { data: t, error: tError } = await supabase
-        .from("operator_trips")
+        .from("trips")
         .select("id, title, status, price_from")
         .eq("operator_id", op.id)
         .order("created_at", { ascending: false });
 
       if (tError) console.error("trips load error:", tError);
-      else setTrips(t || []);
+      else setTrips((t || []) as TripRow[]);
 
       setLoading(false);
     };
 
     load();
   }, []);
+
+  // EDIT TRIP
+  const handleEditTrip = (tripId: string) => {
+    router.push(`/operators/trips/${tripId}/edit`);
+  };
+
+  // DELETE TRIP
+  const handleDeleteTrip = async (tripId: string) => {
+    const ok = window.confirm(
+      "Are you sure you want to delete this trip? This action cannot be undone."
+    );
+    if (!ok) return;
+
+    try {
+      const res = await fetch(`/api/trips/${tripId}/delete`, {
+        method: "DELETE",
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data?.success) {
+        alert(
+          "Error deleting trip: " + (data?.error || "Unknown error occurred")
+        );
+        return;
+      }
+
+      setTrips((prev) => prev.filter((t) => t.id !== tripId));
+      alert("Trip deleted successfully.");
+    } catch (err) {
+      console.error(err);
+      alert("Unexpected error deleting trip.");
+    }
+  };
 
   if (loading) {
     return (
@@ -299,7 +320,7 @@ export default function OperatorDashboard() {
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               {quotes.map((q) => {
                 const ai = isAIQuote(q.message);
-                const parsed = ai ? parseAIQuote(q.message) : null;
+                const parsed = ai ? parseAIQuote(q.message!) : null;
 
                 return (
                   <div
@@ -416,7 +437,7 @@ export default function OperatorDashboard() {
                       </div>
                     )}
 
-                    {/* ITINERARY PREVIEW FOR AI QUOTES */}
+                    {/* ITINERARY PREVIEW */}
                     {ai && parsed && parsed.days.length > 0 && (
                       <div
                         style={{
@@ -453,7 +474,7 @@ export default function OperatorDashboard() {
                       </div>
                     )}
 
-                    {/* NON-AI MESSAGE (OR FALLBACK) */}
+                    {/* NON-AI MESSAGE */}
                     {!ai && (
                       <p
                         style={{
@@ -556,7 +577,7 @@ export default function OperatorDashboard() {
                   </div>
 
                   <div style={{ fontSize: 12, color: "#6B7280" }}>
-                    {t.price_from
+                    {t.price_from != null
                       ? `From $${t.price_from}`
                       : "Price on request"}
                   </div>
@@ -567,18 +588,61 @@ export default function OperatorDashboard() {
                       display: "flex",
                       justifyContent: "space-between",
                       alignItems: "center",
+                      gap: 12,
                     }}
                   >
-                    <a
-                      href={`/operators/trips/${t.id}`}
+                    <div
                       style={{
-                        fontSize: 12,
-                        color: BRAND_GREEN,
-                        fontWeight: 600,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        flexWrap: "wrap",
                       }}
                     >
-                      Manage trip →
-                    </a>
+                      <a
+                        href={`/operators/trips/${t.id}`}
+                        style={{
+                          fontSize: 12,
+                          color: BRAND_GREEN,
+                          fontWeight: 600,
+                          textDecoration: "none",
+                        }}
+                      >
+                        Manage trip →
+                      </a>
+
+                      <button
+                        type="button"
+                        onClick={() => handleEditTrip(t.id)}
+                        style={{
+                          fontSize: 12,
+                          border: "none",
+                          background: "transparent",
+                          color: "#1D4ED8",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          padding: 0,
+                        }}
+                      >
+                        Edit
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTrip(t.id)}
+                        style={{
+                          fontSize: 12,
+                          border: "none",
+                          background: "transparent",
+                          color: "#B91C1C",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          padding: 0,
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
 
                     <span
                       style={{
@@ -595,7 +659,7 @@ export default function OperatorDashboard() {
                             : "1px solid #FDE68A",
                       }}
                     >
-                      {t.status}
+                      {t.status || "draft"}
                     </span>
                   </div>
                 </div>
