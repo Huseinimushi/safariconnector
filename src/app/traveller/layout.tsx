@@ -22,27 +22,13 @@ export default function TravellerLayout({ children }: Props) {
 
         if (!isMounted) return;
 
+        // ❌ Kama kuna error au hakuna user → rudi traveller login
         if (error || !data?.user) {
-          // Hakuna user → rudi kwenye traveller login
           router.replace("/login/traveller");
           return;
         }
 
-        const user = data.user;
-
-        const metaRole =
-          (user.app_metadata?.role as string | undefined) ||
-          (user.user_metadata?.role as string | undefined) ||
-          null;
-
-        const isTraveller =
-          metaRole && metaRole.toLowerCase() === "traveller";
-
-        if (!isTraveller) {
-          router.replace("/login/traveller?error=not_traveller");
-          return;
-        }
-
+        // ✅ User yupo, hatu-check role tena
         setAllowed(true);
       } catch (err) {
         console.error("traveller layout auth error:", err);
