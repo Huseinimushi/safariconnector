@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { FaFacebookF, FaInstagram, FaTiktok } from "react-icons/fa";
 import { FaXTwitter } from "react-icons/fa6";
 import { IoSearchOutline } from "react-icons/io5";
+import { supabase } from "@/lib/supabaseClient";
 
 const SOCIAL_LINKS = {
   facebook: "https://facebook.com/safariconnector",
@@ -16,6 +18,47 @@ const SOCIAL_LINKS = {
 
 export default function Nav() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  // status ya login ya traveller (global Supabase user)
+  const [travellerLoggedIn, setTravellerLoggedIn] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncUser = async () => {
+      try {
+        const { data, error } = await supabase.auth.getUser();
+
+        if (!isMounted) return;
+
+        if (error || !data?.user) {
+          setTravellerLoggedIn(false);
+        } else {
+          setTravellerLoggedIn(true);
+        }
+      } catch (err) {
+        console.error("Nav traveller check error:", err);
+        if (isMounted) setTravellerLoggedIn(false);
+      }
+    };
+
+    // 1) check on mount & on route change
+    syncUser();
+
+    // 2) sikiliza mabadiliko ya auth (login/logout) pia
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (!isMounted) return;
+        setTravellerLoggedIn(!!session?.user);
+      }
+    );
+
+    return () => {
+      isMounted = false;
+      authListener?.subscription.unsubscribe();
+    };
+  }, [pathname]);
 
   const isActiveExact = (path: string) => pathname === path;
   const isActivePrefix = (prefix: string) =>
@@ -23,6 +66,20 @@ export default function Nav() {
 
   const navLinkClass = (active: boolean) =>
     `nav-link${active ? " active" : ""}`;
+
+  const handleTravellerClick = () => {
+    if (travellerLoggedIn) {
+      // tayari ka-login → mpeleke kwenye account
+      router.push("/traveller/dashboard");
+      // ukitaka badala yake profile:
+      // router.push("/traveller/profile");
+    } else {
+      // haja-login → mpeleke login
+      router.push("/login/traveller");
+    }
+  };
+
+  const travellerLabel = travellerLoggedIn ? "My Account" : "Login as Traveller";
 
   return (
     <header className="nav-root">
@@ -57,19 +114,23 @@ export default function Nav() {
             }}
           >
             <div style={{ display: "flex", gap: 8 }}>
-              <Link
-                href="/login/traveller"
+              {/* Traveller button – muonekano ule ule */}
+              <button
+                type="button"
+                onClick={handleTravellerClick}
                 className="btn ghost"
                 style={{
                   borderColor: "#ffffff",
                   color: "#ffffff",
                   padding: "6px 12px",
                   fontSize: "13px",
+                  background: "transparent",
                 }}
               >
-                Login as Traveller
-              </Link>
+                {travellerLabel}
+              </button>
 
+              {/* Operator login unchanged */}
               <Link
                 href="/operators/login"
                 className="btn ghost"
