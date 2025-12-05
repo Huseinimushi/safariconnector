@@ -21,6 +21,7 @@ type QuoteRow = {
   email: string;
   message: string;
   created_at: string;
+  trip_id: string | null; // 👈 sasa tunajua enquiry imeenda trip gani
 };
 
 type TripRow = {
@@ -78,6 +79,7 @@ export default function OperatorDashboard() {
   const [operator, setOperator] = useState<OperatorRow | null>(null);
   const [quotes, setQuotes] = useState<QuoteRow[]>([]);
   const [trips, setTrips] = useState<TripRow[]>([]);
+  const [lockedTripIds, setLockedTripIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -120,18 +122,27 @@ export default function OperatorDashboard() {
 
       setOperator(op);
 
-      // 3. QUOTES – format ile ile ya zamani (haina trip_id)
+      // 3. QUOTES – sasa tuna-request pia trip_id
       const { data: q, error: qError } = await supabase
         .from("operator_quotes")
-        .select("id, full_name, email, message, created_at")
+        .select("id, full_name, email, message, created_at, trip_id")
         .eq("operator_id", op.id)
         .order("created_at", { ascending: false });
 
       if (qError) {
         console.error("quote load error:", qError);
         setQuotes([]);
+        setLockedTripIds([]);
       } else {
-        setQuotes((q || []) as QuoteRow[]);
+        const list = (q || []) as QuoteRow[];
+        setQuotes(list);
+
+        // trips zote zenye enquiries → ziwe locked
+        const locked = list
+          .map((item) => item.trip_id)
+          .filter((id): id is string => !!id);
+
+        setLockedTripIds(Array.from(new Set(locked)));
       }
 
       // 4. TRIPS — trips.operator_id = operators.id
@@ -555,115 +566,133 @@ export default function OperatorDashboard() {
             )}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {trips.map((t) => (
-                <div
-                  key={t.id}
-                  style={{
-                    backgroundColor: "#FAFAFA",
-                    border: "1px solid #E5E7EB",
-                    borderRadius: 12,
-                    padding: 12,
-                    fontSize: 13,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontWeight: 700,
-                      color: "#111827",
-                      marginBottom: 4,
-                    }}
-                  >
-                    {t.title}
-                  </div>
+              {trips.map((t) => {
+                const hasQuotesForThisTrip = lockedTripIds.includes(t.id);
 
-                  <div style={{ fontSize: 12, color: "#6B7280" }}>
-                    {t.price_from != null
-                      ? `From $${t.price_from}`
-                      : "Price on request"}
-                  </div>
-
+                return (
                   <div
+                    key={t.id}
                     style={{
-                      marginTop: 8,
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 12,
+                      backgroundColor: "#FAFAFA",
+                      border: "1px solid #E5E7EB",
+                      borderRadius: 12,
+                      padding: 12,
+                      fontSize: 13,
                     }}
                   >
                     <div
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        flexWrap: "wrap",
+                        fontWeight: 700,
+                        color: "#111827",
+                        marginBottom: 4,
                       }}
                     >
-                      <a
-                        href={`/operators/trips/${t.id}`}
-                        style={{
-                          fontSize: 12,
-                          color: BRAND_GREEN,
-                          fontWeight: 600,
-                          textDecoration: "none",
-                        }}
-                      >
-                        Manage trip →
-                      </a>
-
-                      <button
-                        type="button"
-                        onClick={() => handleEditTrip(t.id)}
-                        style={{
-                          fontSize: 12,
-                          border: "none",
-                          background: "transparent",
-                          color: "#1D4ED8",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          padding: 0,
-                        }}
-                      >
-                        Edit
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteTrip(t.id)}
-                        style={{
-                          fontSize: 12,
-                          border: "none",
-                          background: "transparent",
-                          color: "#B91C1C",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          padding: 0,
-                        }}
-                      >
-                        Delete
-                      </button>
+                      {t.title}
                     </div>
 
-                    <span
+                    <div style={{ fontSize: 12, color: "#6B7280" }}>
+                      {t.price_from != null
+                        ? `From $${t.price_from}`
+                        : "Price on request"}
+                    </div>
+
+                    <div
                       style={{
-                        fontSize: 11,
-                        padding: "2px 8px",
-                        borderRadius: 999,
-                        backgroundColor:
-                          t.status === "published" ? "#DCFCE7" : "#FEF3C7",
-                        color:
-                          t.status === "published" ? "#166534" : "#92400E",
-                        border:
-                          t.status === "published"
-                            ? "1px solid #BBF7D0"
-                            : "1px solid #FDE68A",
+                        marginTop: 8,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 12,
                       }}
                     >
-                      {t.status || "draft"}
-                    </span>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <a
+                          href={`/operators/trips/${t.id}`}
+                          style={{
+                            fontSize: 12,
+                            color: BRAND_GREEN,
+                            fontWeight: 600,
+                            textDecoration: "none",
+                          }}
+                        >
+                          Manage trip →
+                        </a>
+
+                        {hasQuotesForThisTrip ? (
+                          <span
+                            style={{
+                              fontSize: 12,
+                              color: "#9CA3AF",
+                              fontStyle: "italic",
+                            }}
+                          >
+                            Locked (this trip has enquiries – admin only)
+                          </span>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleEditTrip(t.id)}
+                              style={{
+                                fontSize: 12,
+                                border: "none",
+                                background: "transparent",
+                                color: "#1D4ED8",
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                padding: 0,
+                              }}
+                            >
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTrip(t.id)}
+                              style={{
+                                fontSize: 12,
+                                border: "none",
+                                background: "transparent",
+                                color: "#B91C1C",
+                                fontWeight: 600,
+                                cursor: "pointer",
+                                padding: 0,
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </>
+                        )}
+                      </div>
+
+                      <span
+                        style={{
+                          fontSize: 11,
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          backgroundColor:
+                            t.status === "published" ? "#DCFCE7" : "#FEF3C7",
+                          color:
+                            t.status === "published" ? "#166534" : "#92400E",
+                          border:
+                            t.status === "published"
+                              ? "1px solid #BBF7D0"
+                              : "1px solid #FDE68A",
+                        }}
+                      >
+                        {t.status || "draft"}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>

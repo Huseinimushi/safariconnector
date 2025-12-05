@@ -1,24 +1,48 @@
-import { supabase } from "@/lib/supabaseClient";
 import { NextResponse } from "next/server";
+import { supabase } from "@/lib/supabaseClient";
 
-export async function DELETE(req: Request, { params }: any) {
-  const { id } = params;
+export async function DELETE(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
+  const tripId = params.id;
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // 1. Angalia kama kuna enquiries kwa hii trip
+  const { count, error: quoteErr } = await supabase
+    .from("operator_quotes")
+    .select("id", { count: "exact", head: true })
+    .eq("trip_id", tripId);
 
-  if (!user) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  if (quoteErr) {
+    return NextResponse.json(
+      { success: false, error: quoteErr.message },
+      { status: 500 }
+    );
+  }
 
-  // Delete trip but only if operator_id = auth.uid()
-  const { error } = await supabase
+  if ((count ?? 0) > 0) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          "This trip already has enquiries. Only an admin can delete it.",
+      },
+      { status: 400 }
+    );
+  }
+
+  // 2. Kama hakuna enquiries, endelea kufuta
+  const { error: deleteErr } = await supabase
     .from("trips")
     .delete()
-    .eq("id", id)
-    .eq("operator_id", user.id);
+    .eq("id", tripId);
 
-  if (error)
-    return NextResponse.json({ error: error.message }, { status: 400 });
+  if (deleteErr) {
+    return NextResponse.json(
+      { success: false, error: deleteErr.message },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json({ success: true });
 }
