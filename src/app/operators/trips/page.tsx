@@ -2,736 +2,480 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import { useRouter } from "next/navigation";
 
-const BRAND_GREEN = "#0B6B3A";
-const BRAND_GOLD = "#D4A017";
-const BG_SAND = "#F4F3ED";
+/* -------- Types -------- */
 
 type OperatorRow = {
-  id: string;
-  company_name: string;
-  status: string;
-};
-
-type QuoteRow = {
-  id: string;
-  full_name: string;
-  email: string;
-  message: string;
-  created_at: string;
-  trip_id: string | null; // 👈 sasa tunajua enquiry imeenda trip gani
+  [key: string]: any;
 };
 
 type TripRow = {
   id: string;
-  title: string;
-  status: string | null;
+  title: string | null;
   price_from: number | null;
+  status?: string | null; // kama una column hii, la sivyo tuna-set "active"
+  operator_id: string | null;
 };
 
-type ParsedAIQuote = {
-  meta: Record<string, string>;
-  days: string[];
+/* -------- Helper -------- */
+
+const pickOperatorId = (op: OperatorRow | null): string | null => {
+  if (!op) return null;
+  if (typeof op.operator_id === "string") return op.operator_id;
+  if (typeof op.id === "string") return op.id;
+  if (typeof op.user_id === "string") return op.user_id;
+  return null;
 };
 
-function isAIQuote(message: string | null | undefined): boolean {
-  if (!message) return false;
-  return message.startsWith(
-    "Enquiry generated via Safari Connector AI Trip Builder."
-  );
-}
-
-function parseAIQuote(message: string): ParsedAIQuote {
-  const lines = message.split("\n").map((l) => l.trim());
-  const meta: Record<string, string> = {};
-  const days: string[] = [];
-
-  let inItinerary = false;
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (!line) continue;
-
-    if (line === "Suggested itinerary:" || line === "Suggested itinerary") {
-      inItinerary = true;
-      continue;
-    }
-
-    if (!inItinerary) {
-      const idx = line.indexOf(":");
-      if (idx > 0) {
-        const key = line.slice(0, idx).trim();
-        const value = line.slice(idx + 1).trim();
-        meta[key] = value;
-      }
-    } else {
-      days.push(line);
-    }
-  }
-
-  return { meta, days };
-}
-
-export default function OperatorDashboard() {
-  const router = useRouter();
-
-  const [operator, setOperator] = useState<OperatorRow | null>(null);
-  const [quotes, setQuotes] = useState<QuoteRow[]>([]);
-  const [trips, setTrips] = useState<TripRow[]>([]);
-  const [lockedTripIds, setLockedTripIds] = useState<string[]>([]);
+export default function OperatorTripsPage() {
   const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [operator, setOperator] = useState<OperatorRow | null>(null);
+  const [trips, setTrips] = useState<TripRow[]>([]);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     const load = async () => {
       setLoading(true);
-      setMsg(null);
+      setErrorMsg(null);
 
-      // 1. AUTH
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
+      try {
+        // 1) Current user
+        const { data: userResp, error: userErr } = await supabase.auth.getUser();
+        if (userErr || !userResp?.user) {
+          console.error("operator trips auth error:", userErr);
+          if (!isMounted) return;
+          setErrorMsg("Please log in as an operator to manage your trips.");
+          setLoading(false);
+          return;
+        }
 
-      if (authError || !user) {
-        setMsg("❌ Please log in first.");
-        setLoading(false);
-        return;
+        const user = userResp.user;
+
+        // 2) Operator profile (operators_view → operators fallback)
+        let operatorRow: OperatorRow | null = null;
+
+        const { data: opViewRows, error: opViewErr } = await supabase
+          .from("operators_view")
+          .select("*")
+          .eq("user_id", user.id)
+          .limit(1);
+
+        if (opViewErr) {
+          console.warn("operators_view trips error:", opViewErr);
+        }
+
+        if (opViewRows && opViewRows.length > 0) {
+          operatorRow = opViewRows[0] as OperatorRow;
+        }
+
+        if (!operatorRow) {
+          const { data: opRows, error: opErr } = await supabase
+            .from("operators")
+            .select("*")
+            .eq("user_id", user.id)
+            .limit(1);
+
+          if (opErr) console.warn("operators fallback trips error:", opErr);
+          if (opRows && opRows.length > 0) {
+            operatorRow = opRows[0] as OperatorRow;
+          }
+        }
+
+        const operatorId = pickOperatorId(operatorRow);
+
+        if (!operatorRow || !operatorId) {
+          if (!isMounted) return;
+          setOperator(null);
+          setTrips([]);
+          setErrorMsg(
+            "We couldn’t find your operator profile. Please contact support to get set up."
+          );
+          setLoading(false);
+          return;
+        }
+
+        if (!isMounted) return;
+        setOperator(operatorRow);
+
+        // 3) Trips for this operator
+        const { data: tripRows, error: tripsErr } = await supabase
+          .from("trips")
+          .select("id,title,price_from,status,operator_id")
+          .eq("operator_id", operatorId)
+          .order("created_at", { ascending: false });
+
+        if (tripsErr) {
+          console.error("operator trips load error:", tripsErr);
+          if (!isMounted) return;
+          setTrips([]);
+          setErrorMsg("Could not load your trips.");
+        } else if (isMounted) {
+          setTrips((tripRows || []) as TripRow[]);
+        }
+      } catch (err: any) {
+        console.error("operator trips exception:", err);
+        if (isMounted) {
+          setErrorMsg("Unexpected error while loading your trips.");
+        }
+      } finally {
+        if (isMounted) setLoading(false);
       }
-
-      // 2. OPERATOR PROFILE
-      const { data: op, error: opError } = await supabase
-        .from("operators")
-        .select("id, company_name, status")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (opError) {
-        console.error("operator load error:", opError);
-        setMsg("⚠ Problem loading operator profile.");
-        setLoading(false);
-        return;
-      }
-
-      if (!op) {
-        setOperator(null);
-        setLoading(false);
-        return;
-      }
-
-      setOperator(op);
-
-      // 3. QUOTES – sasa tuna-request pia trip_id
-      const { data: q, error: qError } = await supabase
-        .from("operator_quotes")
-        .select("id, full_name, email, message, created_at, trip_id")
-        .eq("operator_id", op.id)
-        .order("created_at", { ascending: false });
-
-      if (qError) {
-        console.error("quote load error:", qError);
-        setQuotes([]);
-        setLockedTripIds([]);
-      } else {
-        const list = (q || []) as QuoteRow[];
-        setQuotes(list);
-
-        // trips zote zenye enquiries → ziwe locked
-        const locked = list
-          .map((item) => item.trip_id)
-          .filter((id): id is string => !!id);
-
-        setLockedTripIds(Array.from(new Set(locked)));
-      }
-
-      // 4. TRIPS — trips.operator_id = operators.id
-      const { data: t, error: tError } = await supabase
-        .from("trips")
-        .select("id, title, status, price_from")
-        .eq("operator_id", op.id)
-        .order("created_at", { ascending: false });
-
-      if (tError) console.error("trips load error:", tError);
-      else setTrips((t || []) as TripRow[]);
-
-      setLoading(false);
     };
 
     load();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
-  // EDIT TRIP
-  const handleEditTrip = (tripId: string) => {
-    router.push(`/operators/trips/${tripId}/edit`);
-  };
-
-  // DELETE TRIP
   const handleDeleteTrip = async (tripId: string) => {
-    const ok = window.confirm(
-      "Are you sure you want to delete this trip? This action cannot be undone."
+    const confirmDelete = window.confirm(
+      "Are you sure you want to delete this trip? This cannot be undone."
     );
-    if (!ok) return;
+    if (!confirmDelete) return;
 
-    try {
-      const res = await fetch(`/api/trips/${tripId}/delete`, {
-        method: "DELETE",
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data?.success) {
-        alert(
-          "Error deleting trip: " + (data?.error || "Unknown error occurred")
-        );
-        return;
-      }
-
-      setTrips((prev) => prev.filter((t) => t.id !== tripId));
-      alert("Trip deleted successfully.");
-    } catch (err) {
-      console.error(err);
-      alert("Unexpected error deleting trip.");
+    const { error } = await supabase.from("trips").delete().eq("id", tripId);
+    if (error) {
+      console.error("delete trip error:", error);
+      alert("Failed to delete trip. Please try again.");
+      return;
     }
+
+    setTrips((prev) => prev.filter((t) => t.id !== tripId));
   };
 
-  if (loading) {
-    return (
-      <main
-        style={{
-          backgroundColor: BG_SAND,
-          minHeight: "100vh",
-          padding: 40,
-          textAlign: "center",
-          color: "#6B7280",
-        }}
-      >
-        Loading your operator dashboard…
-      </main>
-    );
-  }
+  const operatorName =
+    (operator?.name as string) ||
+    (operator?.company_name as string) ||
+    "Tour Operator";
+
+  const tripsCount = trips.length;
 
   return (
-    <div style={{ backgroundColor: BG_SAND, minHeight: "100vh" }}>
-      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 16px" }}>
-        {/* HEADER */}
-        <section style={{ marginBottom: 28 }}>
-          <p
+    <main
+      style={{
+        maxWidth: 1120,
+        margin: "0 auto",
+        padding: "32px 16px 64px",
+      }}
+    >
+      {/* Top heading + back button */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: 12,
+          marginBottom: 8,
+        }}
+      >
+        <div>
+          <div
             style={{
-              margin: 0,
               fontSize: 11,
-              textTransform: "uppercase",
               letterSpacing: "0.2em",
-              color: "#6B7280",
+              textTransform: "uppercase",
+              color: "#9CA3AF",
+              marginBottom: 6,
             }}
           >
             Safari Connector
-          </p>
+          </div>
+
           <h1
             style={{
               margin: 0,
-              marginTop: 6,
               fontSize: 28,
               fontWeight: 800,
-              color: BRAND_GREEN,
+              color: "#14532D",
             }}
           >
             Tour Operator Dashboard
           </h1>
-
-          {!operator && (
-            <p
-              style={{
-                marginTop: 6,
-                fontSize: 14,
-                color: "#B91C1C",
-                fontWeight: 600,
-              }}
-            >
-              ⚠ You have no operator profile.&nbsp;
-              <a
-                href="/operators/register"
-                style={{ color: BRAND_GREEN, fontWeight: 700 }}
-              >
-                Create operator profile →
-              </a>
-            </p>
-          )}
-
-          {operator && (
-            <p
-              style={{
-                marginTop: 4,
-                fontSize: 14,
-                color: "#4B5563",
-              }}
-            >
-              Welcome, <b>{operator.company_name}</b> — manage your trips &
-              enquiries here.
-            </p>
-          )}
-        </section>
-
-        {msg && (
-          <div
+          <p
             style={{
-              marginBottom: 16,
-              padding: "10px 12px",
-              borderRadius: 10,
-              fontSize: 13,
-              backgroundColor: msg.startsWith("❌") ? "#FEE2E2" : "#FEF3C7",
-              color: msg.startsWith("❌") ? "#B91C1C" : "#92400E",
-              border: "1px solid #E5E7EB",
+              margin: 0,
+              marginTop: 4,
+              fontSize: 14,
+              color: "#4B5563",
             }}
           >
-            {msg}
-          </div>
-        )}
+            Welcome, {operatorName} — manage your trips listed for travellers
+            here.
+          </p>
+        </div>
 
-        {/* GRID LAYOUT */}
-        <section
+        {/* NEW: back to dashboard button */}
+        <Link
+          href="/operators/dashboard"
           style={{
-            display: "grid",
-            gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 1fr)",
-            gap: 20,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            padding: "6px 12px",
+            borderRadius: 999,
+            border: "1px solid #D1D5DB",
+            backgroundColor: "#FFFFFF",
+            fontSize: 13,
+            fontWeight: 500,
+            color: "#374151",
+            textDecoration: "none",
+            whiteSpace: "nowrap",
           }}
         >
-          {/* QUOTES SECTION */}
-          <div
-            style={{
-              backgroundColor: "#FFF",
-              border: "1px solid #E5E7EB",
-              borderRadius: 18,
-              padding: 18,
-            }}
-          >
-            <h3
+          <span style={{ fontSize: 16 }}>←</span>
+          <span>Back to dashboard</span>
+        </Link>
+      </div>
+
+      {errorMsg && (
+        <div
+          style={{
+            marginTop: 16,
+            marginBottom: 12,
+            borderRadius: 16,
+            padding: "10px 12px",
+            backgroundColor: "#FEF2F2",
+            border: "1px solid #FECACA",
+            fontSize: 13,
+            color: "#B91C1C",
+          }}
+        >
+          {errorMsg}
+        </div>
+      )}
+
+      {/* Main trips section */}
+      <section
+        style={{
+          marginTop: 22,
+          borderRadius: 24,
+          backgroundColor: "#FFFFFF",
+          border: "1px solid #E5E7EB",
+          padding: "18px 18px 16px",
+        }}
+      >
+        {/* Header row */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+            marginBottom: 12,
+          }}
+        >
+          <div>
+            <h2
               style={{
                 margin: 0,
-                fontSize: 16,
-                fontWeight: 700,
+                fontSize: 18,
+                fontWeight: 800,
                 color: "#111827",
-                marginBottom: 6,
-              }}
-            >
-              Quote requests
-            </h3>
-
-            <p style={{ fontSize: 13, color: "#6B7280", marginTop: 0 }}>
-              AI-generated enquiries + direct client messages appear here.
-            </p>
-
-            {quotes.length === 0 && (
-              <p style={{ fontSize: 13, color: "#9CA3AF" }}>
-                No enquiries yet. Once guests send requests from your public
-                profile, they will appear here.
-              </p>
-            )}
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {quotes.map((q) => {
-                const ai = isAIQuote(q.message);
-                const parsed = ai ? parseAIQuote(q.message!) : null;
-
-                return (
-                  <div
-                    key={q.id}
-                    style={{
-                      backgroundColor: "#FAFAFA",
-                      border: "1px solid #E5E7EB",
-                      borderRadius: 12,
-                      padding: 12,
-                      fontSize: 13,
-                    }}
-                  >
-                    {/* NAME + EMAIL */}
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "flex-start",
-                        gap: 8,
-                      }}
-                    >
-                      <div>
-                        <div
-                          style={{
-                            fontWeight: 700,
-                            color: "#111827",
-                          }}
-                        >
-                          {q.full_name || "Guest enquiry"}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: "#6B7280",
-                          }}
-                        >
-                          {q.email}
-                        </div>
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: "#9CA3AF",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {new Date(q.created_at).toLocaleString()}
-                      </div>
-                    </div>
-
-                    {/* AI BADGE */}
-                    {ai && (
-                      <div
-                        style={{
-                          marginTop: 6,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                          padding: "3px 8px",
-                          borderRadius: 999,
-                          border: "1px solid #FDE68A",
-                          backgroundColor: "#FFFBEB",
-                          fontSize: 11,
-                          color: "#92400E",
-                          fontWeight: 600,
-                        }}
-                      >
-                        <span>AI Trip Builder enquiry</span>
-                      </div>
-                    )}
-
-                    {/* SUMMARY GRID FOR AI QUOTES */}
-                    {ai && parsed && (
-                      <div
-                        style={{
-                          marginTop: 8,
-                          display: "grid",
-                          gridTemplateColumns:
-                            "repeat(auto-fit, minmax(140px, 1fr))",
-                          gap: 8,
-                          fontSize: 12,
-                        }}
-                      >
-                        {parsed.meta["Destination"] && (
-                          <SummaryPill
-                            label="Destination"
-                            value={parsed.meta["Destination"]}
-                          />
-                        )}
-                        {parsed.meta["Days"] && (
-                          <SummaryPill
-                            label="Days"
-                            value={parsed.meta["Days"]}
-                          />
-                        )}
-                        {parsed.meta["Budget"] && (
-                          <SummaryPill
-                            label="Budget"
-                            value={parsed.meta["Budget"]}
-                          />
-                        )}
-                        {parsed.meta["Group type"] && (
-                          <SummaryPill
-                            label="Group"
-                            value={parsed.meta["Group type"]}
-                          />
-                        )}
-                        {parsed.meta["Style"] && (
-                          <SummaryPill
-                            label="Style"
-                            value={parsed.meta["Style"]}
-                          />
-                        )}
-                      </div>
-                    )}
-
-                    {/* ITINERARY PREVIEW */}
-                    {ai && parsed && parsed.days.length > 0 && (
-                      <div
-                        style={{
-                          marginTop: 10,
-                          paddingTop: 8,
-                          borderTop: "1px dashed #E5E7EB",
-                        }}
-                      >
-                        <div
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 600,
-                            color: "#111827",
-                            marginBottom: 4,
-                          }}
-                        >
-                          Suggested itinerary (preview)
-                        </div>
-                        <ul
-                          style={{
-                            margin: 0,
-                            paddingLeft: 18,
-                            fontSize: 12,
-                            color: "#374151",
-                          }}
-                        >
-                          {parsed.days.slice(0, 3).map((line) => (
-                            <li key={line}>{line}</li>
-                          ))}
-                          {parsed.days.length > 3 && (
-                            <li>…and more days in full itinerary</li>
-                          )}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* NON-AI MESSAGE */}
-                    {!ai && (
-                      <p
-                        style={{
-                          marginTop: 8,
-                          fontSize: 13,
-                          color: "#374151",
-                        }}
-                      >
-                        {q.message}
-                      </p>
-                    )}
-
-                    {/* LINK TO FULL CHAT */}
-                    <a
-                      href={`/operators/quotes/${q.id}`}
-                      style={{
-                        marginTop: 10,
-                        display: "inline-block",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: BRAND_GREEN,
-                      }}
-                    >
-                      Open chat →
-                    </a>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* TRIPS SECTION */}
-          <div
-            style={{
-              backgroundColor: "#FFF",
-              border: "1px solid #E5E7EB",
-              borderRadius: 18,
-              padding: 18,
-            }}
-          >
-            <h3
-              style={{
-                margin: 0,
-                fontSize: 16,
-                fontWeight: 700,
-                color: "#111827",
-                marginBottom: 6,
               }}
             >
               Your trips
-            </h3>
-
-            <p style={{ fontSize: 13, color: "#6B7280", marginTop: 0 }}>
-              Trips you have listed for travellers to book.
-            </p>
-
-            <a
-              href="/operators/trips/new"
+            </h2>
+            <p
               style={{
-                display: "inline-block",
+                margin: 0,
+                marginTop: 4,
                 fontSize: 13,
-                marginBottom: 10,
-                padding: "6px 12px",
-                borderRadius: 999,
-                backgroundColor: BRAND_GREEN,
-                color: "white",
-                fontWeight: 600,
-                textDecoration: "none",
+                color: "#6B7280",
               }}
             >
-              + Add new trip
-            </a>
+              Trips you have listed for travellers to book.
+            </p>
+          </div>
 
-            {trips.length === 0 && (
-              <p style={{ fontSize: 13, color: "#9CA3AF" }}>
-                You have not listed any trips yet.
-              </p>
-            )}
+          <Link
+            href="/operators/trips/new" // TODO: badilisha kama route yako ya ku-create trip ni tofauti
+            style={{
+              padding: "8px 14px",
+              borderRadius: 999,
+              backgroundColor: "#0B6B3A",
+              color: "#FFFFFF",
+              fontSize: 13,
+              fontWeight: 600,
+              textDecoration: "none",
+              boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            + Add new trip
+          </Link>
+        </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {trips.map((t) => {
-                const hasQuotesForThisTrip = lockedTripIds.includes(t.id);
+        {loading ? (
+          <div
+            style={{
+              fontSize: 13,
+              color: "#6B7280",
+            }}
+          >
+            Loading trips…
+          </div>
+        ) : tripsCount === 0 ? (
+          <div
+            style={{
+              marginTop: 8,
+              borderRadius: 16,
+              border: "1px dashed #D1D5DB",
+              backgroundColor: "#F9FAFB",
+              padding: 16,
+              fontSize: 13,
+              color: "#4B5563",
+            }}
+          >
+            You haven&apos;t created any trips yet. Click{" "}
+            <strong>&ldquo;Add new trip&rdquo;</strong> to publish your first
+            itinerary.
+          </div>
+        ) : (
+          <div
+            style={{
+              marginTop: 8,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+            }}
+          >
+            {trips.map((trip) => {
+              const statusLabel = trip.status || "active";
 
-                return (
+              return (
+                <div
+                  key={trip.id}
+                  style={{
+                    borderRadius: 18,
+                    border: "1px solid #E5E7EB",
+                    padding: "12px 14px",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 12,
+                    backgroundColor: "#FFFFFF",
+                  }}
+                >
                   <div
-                    key={t.id}
                     style={{
-                      backgroundColor: "#FAFAFA",
-                      border: "1px solid #E5E7EB",
-                      borderRadius: 12,
-                      padding: 12,
-                      fontSize: 13,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
                     }}
                   >
                     <div
                       style={{
+                        fontSize: 15,
                         fontWeight: 700,
                         color: "#111827",
-                        marginBottom: 4,
                       }}
                     >
-                      {t.title}
+                      {trip.title || "Untitled trip"}
                     </div>
-
-                    <div style={{ fontSize: 12, color: "#6B7280" }}>
-                      {t.price_from != null
-                        ? `From $${t.price_from}`
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: "#6B7280",
+                      }}
+                    >
+                      {trip.price_from
+                        ? `From $${trip.price_from.toLocaleString()}`
                         : "Price on request"}
                     </div>
 
                     <div
                       style={{
-                        marginTop: 8,
+                        marginTop: 4,
                         display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 12,
+                        gap: 10,
+                        flexWrap: "wrap",
+                        fontSize: 13,
                       }}
                     >
-                      <div
+                      <Link
+                        href={`/trips/${trip.id}`} // public trip page
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          flexWrap: "wrap",
+                          color: "#0B6B3A",
+                          textDecoration: "none",
+                          fontWeight: 600,
                         }}
                       >
-                        <a
-                          href={`/operators/trips/${t.id}`}
-                          style={{
-                            fontSize: 12,
-                            color: BRAND_GREEN,
-                            fontWeight: 600,
-                            textDecoration: "none",
-                          }}
-                        >
-                          Manage trip →
-                        </a>
-
-                        {hasQuotesForThisTrip ? (
-                          <span
-                            style={{
-                              fontSize: 12,
-                              color: "#9CA3AF",
-                              fontStyle: "italic",
-                            }}
-                          >
-                            Locked (this trip has enquiries – admin only)
-                          </span>
-                        ) : (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleEditTrip(t.id)}
-                              style={{
-                                fontSize: 12,
-                                border: "none",
-                                background: "transparent",
-                                color: "#1D4ED8",
-                                fontWeight: 600,
-                                cursor: "pointer",
-                                padding: 0,
-                              }}
-                            >
-                              Edit
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteTrip(t.id)}
-                              style={{
-                                fontSize: 12,
-                                border: "none",
-                                background: "transparent",
-                                color: "#B91C1C",
-                                fontWeight: 600,
-                                cursor: "pointer",
-                                padding: 0,
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </>
-                        )}
-                      </div>
-
+                        Manage trip →
+                      </Link>
                       <span
                         style={{
-                          fontSize: 11,
-                          padding: "2px 8px",
-                          borderRadius: 999,
-                          backgroundColor:
-                            t.status === "published" ? "#DCFCE7" : "#FEF3C7",
-                          color:
-                            t.status === "published" ? "#166534" : "#92400E",
-                          border:
-                            t.status === "published"
-                              ? "1px solid #BBF7D0"
-                              : "1px solid #FDE68A",
+                          fontSize: 12,
+                          color: "#D1D5DB",
                         }}
                       >
-                        {t.status || "draft"}
+                        |
                       </span>
+                      <Link
+                        href={`/operators/trips/${trip.id}`} // TODO: edit route yako ikae hapa
+                        style={{
+                          color: "#2563EB",
+                          textDecoration: "none",
+                          fontWeight: 500,
+                        }}
+                      >
+                        Edit
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTrip(trip.id)}
+                        style={{
+                          border: "none",
+                          background: "none",
+                          padding: 0,
+                          margin: 0,
+                          fontSize: 13,
+                          color: "#B91C1C",
+                          fontWeight: 500,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Delete
+                      </button>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-      </main>
-    </div>
-  );
-}
 
-/** Chip ya summary (Destination / Days / Budget / Group / Style) */
-function SummaryPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      style={{
-        borderRadius: 999,
-        padding: "6px 10px",
-        backgroundColor: "#F9FAFB",
-        border: "1px solid #E5E7EB",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 10,
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-          color: "#9CA3AF",
-          marginBottom: 2,
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          fontSize: 12,
-          fontWeight: 600,
-          color: "#111827",
-        }}
-      >
-        {value}
-      </div>
-    </div>
+                  <div
+                    style={{
+                      alignSelf: "flex-start",
+                    }}
+                  >
+                    <span
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 999,
+                        fontSize: 11,
+                        fontWeight: 600,
+                        textTransform: "lowercase",
+                        backgroundColor:
+                          statusLabel === "active"
+                            ? "#FEF3C7"
+                            : "#E5E7EB",
+                        color:
+                          statusLabel === "active"
+                            ? "#92400E"
+                            : "#4B5563",
+                      }}
+                    >
+                      {statusLabel}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </main>
   );
 }

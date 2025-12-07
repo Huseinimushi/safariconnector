@@ -1,11 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 
 export async function DELETE(
-  req: Request,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
-  const tripId = params.id;
+  // Next 16: params ni Promise, kwa hiyo tuna-await
+  const { id } = await context.params;
+  const tripId = id;
 
   // 1. Angalia kama kuna enquiries kwa hii trip
   const { count, error: quoteErr } = await supabase

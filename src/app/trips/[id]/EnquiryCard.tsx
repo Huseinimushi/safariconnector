@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/components/AuthProvider";
+import { supabaseBrowser } from "@/lib/supabaseClient";
 
 type Props = {
   id: string;
@@ -75,55 +76,170 @@ export default function EnquiryCard({
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const form = e.currentTarget as HTMLFormElement | null;
+
     setBusy(true);
     setOk(null);
     setErr(null);
 
-    const f = new FormData(e.currentTarget);
+    const f = new FormData(form || undefined);
 
-    // 🔧 FIX: jenga payload bila kutumia FormData.entries()
     const payload: Record<string, any> = {};
     f.forEach((value, key) => {
       payload[key] = value;
     });
 
-    // minimal guardrails
     if (!payload.name || !payload.email || !payload.preferred_date) {
       setErr("Please add your name, email, and preferred date.");
       setBusy(false);
       return;
     }
 
+    let activeUser = user;
+
+    // 👉 Kama hana account (si logged in), tumfanyie signUp / signIn hapa hapa
+    if (!activeUser) {
+      const emailStr = String(payload.email);
+      const passwordStr = String(payload.password || "");
+
+      if (!passwordStr || passwordStr.length < 6) {
+        setErr("Please create a password with at least 6 characters.");
+        setBusy(false);
+        return;
+      }
+
+      try {
+        const { data: signUpData, error: signUpError } =
+          await supabaseBrowser.auth.signUp({
+            email: emailStr,
+            password: passwordStr,
+            options: {
+              data: {
+                full_name: String(payload.name),
+              },
+            },
+          });
+
+        if (signUpError) {
+          // Kama user tayari yupo, jaribu kum-log-in badala ya kusignup tena
+          if (
+            signUpError.message &&
+            signUpError.message.toLowerCase().includes("already registered")
+          ) {
+            const { data: signInData, error: signInError } =
+              await supabaseBrowser.auth.signInWithPassword({
+                email: emailStr,
+                password: passwordStr,
+              });
+
+            if (signInError) {
+              setErr(
+                signInError.message ||
+                  "We couldn't log you in with that email and password."
+              );
+              setBusy(false);
+              return;
+            }
+
+            activeUser = signInData.user ?? null;
+          } else {
+            setErr(signUpError.message || "Could not create your account.");
+            setBusy(false);
+            return;
+          }
+        } else {
+          activeUser = signUpData.user ?? null;
+        }
+      } catch (authErr: any) {
+        console.error("Auth error during quote signup:", authErr);
+        setErr(authErr?.message || "Authentication failed. Please try again.");
+        setBusy(false);
+        return;
+      }
+    }
+
+    if (!activeUser) {
+      setErr("We could not confirm your account. Please try again.");
+      setBusy(false);
+      return;
+    }
+
+    // 🔽 From here: user is guaranteed to have an account (logged-in)
+    const adults = Number(payload.adults || 1);
+
+    const extraDetailsLines: string[] = [];
+
+    extraDetailsLines.push(
+      `Trip duration: ${duration} day(s)`,
+      `Adults: ${adults}`
+    );
+
+    if (parks?.length) {
+      extraDetailsLines.push(`Parks: ${parks.join(", ")}`);
+    }
+
+    if (price_from || price_to) {
+      const fromStr = money(price_from) ?? "On request";
+      const toStr = price_to ? money(price_to) : null;
+      extraDetailsLines.push(
+        `Price range: ${fromStr}${toStr ? ` – ${toStr}` : ""}`
+      );
+    }
+
+    if (payload.country) {
+      extraDetailsLines.push(`Country: ${payload.country}`);
+    }
+
+    const composedNote = [
+      payload.message || "",
+      "",
+      "---- Trip details ----",
+      ...extraDetailsLines,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
     try {
-      const res = await fetch("/api/enquiries", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { error } = await supabaseBrowser.from("quote_requests").insert([
+        {
           trip_id: id,
           trip_title: title,
-          duration,
-          parks,
-          price_from,
-          price_to,
+          date: payload.preferred_date, // yyyy-mm-dd
+          pax: adults,
           name: payload.name,
           email: payload.email,
-          phone: payload.phone || "",
-          country: payload.country || "",
-          preferred_date: payload.preferred_date, // yyyy-mm-dd
-          adults: Number(payload.adults || 2),
-          message: payload.message || "",
-          source: "trip_detail",
-        }),
-      });
+          phone: payload.phone || null,
+          note: composedNote,
+          // unaweza baadaye ukaongezea traveller_id ukitaka:
+          // traveller_id: activeUser.id,
+        },
+      ]);
 
-      if (!res.ok) throw new Error(`Failed (${res.status})`);
-      setOk("Thanks! Our safari expert will reply shortly.");
-      (e.currentTarget as HTMLFormElement).reset();
-      // baada ya reset, rudisha tena values za state ili visipotee kwenye UI
-      setName(initialName ?? "");
-      setEmail(initialEmail ?? "");
-    } catch (e: any) {
-      setErr(e.message || "Something went wrong.");
+      if (error) {
+        console.error(
+          "quote_requests insert error:",
+          error,
+          "message:",
+          (error as any)?.message,
+          "details:",
+          (error as any)?.details,
+          "code:",
+          (error as any)?.code
+        );
+        setErr(
+          (error as any)?.message ||
+            (error as any)?.details ||
+            "Something went wrong. Please try again."
+        );
+      } else {
+        setOk("Thanks! Your request has been sent to our safari experts.");
+        form?.reset();
+        setName(initialName ?? "");
+        setEmail(initialEmail ?? "");
+      }
+    } catch (dbErr: any) {
+      console.error("quote_requests insert exception:", dbErr);
+      setErr(dbErr?.message || "Unexpected error. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -205,6 +321,17 @@ export default function EnquiryCard({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
+
+        {/* Kama mtu haja-login, muonyeshe sehemu ya ku-create password */}
+        {!user && (
+          <input
+            name="password"
+            type="password"
+            placeholder="Create a password (min 6 characters)"
+            required
+            style={input}
+          />
+        )}
 
         <div style={twoCol}>
           <input

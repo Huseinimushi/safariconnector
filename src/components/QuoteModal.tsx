@@ -1,10 +1,9 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-// import { Textarea } from "@/components/ui/Textarea";
 import { useAuth } from "@/components/AuthProvider";
 
 type MiniOperator = {
@@ -34,11 +33,12 @@ export default function QuoteModal({
   prefillForm,
   sourcePage = "operators-list",
 }: QuoteModalProps) {
-  // 🔧 FIX: supabaseBrowser is already a client, don't call it
+  // supabaseBrowser is already a configured client
   const supabase = supabaseBrowser;
-  const { user } = useAuth(); // 🔐 current logged-in traveller (if any)
+  const { user } = useAuth();
 
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // traveler fields
   const [fullName, setFullName] = useState("");
@@ -57,10 +57,9 @@ export default function QuoteModal({
   const selectedList = Object.values(selected);
   const selectedNames = selectedList.map((o) => o.name);
 
-  // 🔐 Auto-fill traveller info when modal opens & user is logged in
+  // Auto-fill traveller info when modal opens & user is logged in
   useEffect(() => {
-    if (!open) return;
-    if (!user) return;
+    if (!open || !user) return;
 
     const meta: any = user.user_metadata || {};
 
@@ -91,9 +90,12 @@ export default function QuoteModal({
     }
   }, [operator]);
 
+  // load operators list
   useEffect(() => {
     if (!open) return;
+
     let active = true;
+
     (async () => {
       setLoadingOps(true);
       try {
@@ -101,16 +103,28 @@ export default function QuoteModal({
           .from("operators_view")
           .select("id, name, country, city, logo_url")
           .limit(40);
-        if (q.trim()) query = query.ilike("name", `%${q.trim()}%`);
-        const { data } = await query.throwOnError();
+
+        if (q.trim()) {
+          query = query.ilike("name", `%${q.trim()}%`);
+        }
+
+        const { data, error } = await query;
+
+        if (error) {
+          console.error("load operators list error:", error);
+          if (active) setOps([]);
+          return;
+        }
+
         if (active) setOps(data ?? []);
       } catch (e) {
-        console.error("load operators list error:", e);
+        console.error("load operators list exception:", e);
         if (active) setOps([]);
       } finally {
         active && setLoadingOps(false);
       }
     })();
+
     return () => {
       active = false;
     };
@@ -129,28 +143,35 @@ export default function QuoteModal({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    setSubmitError(null);
+
+    if (!fullName.trim() || !email.trim()) {
+      setSubmitError("Please provide your name and email.");
+      return;
+    }
+
     if (selectedList.length === 0) {
-      alert("Please choose at least one operator.");
+      setSubmitError("Please choose at least one operator.");
       return;
     }
 
     setSubmitting(true);
 
-    // append chosen operators to the message so we persist something even if DB schema is minimal
-    const operatorHeader = `\n\nOperators selected: ${selectedNames.join(", ")}`;
+    const operatorHeader = `\n\nOperators selected: ${selectedNames.join(
+      ", "
+    )}`;
     const finalMessage = message.includes("Operators selected:")
       ? message
       : message + operatorHeader;
 
     const payload = {
-      operator_id: selectedList.length === 1 ? selectedList[0].id : null, // keep legacy fields for single
+      operator_id: selectedList.length === 1 ? selectedList[0].id : null,
       operator_name: selectedList.length === 1 ? selectedList[0].name : null,
       traveler_name: fullName || null,
       traveler_email: email || null,
       traveler_phone: phone || null,
       message: finalMessage || null,
       source_page: sourcePage,
-      // store plan + form if table supports jsonb; if not, our try/catch keeps UX smooth
       plan: prefillPlan ?? null,
       form: prefillForm ?? null,
       created_at: new Date().toISOString(),
@@ -158,15 +179,19 @@ export default function QuoteModal({
 
     try {
       const { error } = await supabase.from("quote_requests").insert([payload]);
+
       if (error) {
         console.warn("quote_requests insert failed:", error);
+        setSubmitError("We couldn't submit your request. Please try again.");
+      } else {
+        alert(
+          "Request sent. Our operators will get back to you shortly."
+        );
+        onClose();
       }
-      alert("Request sent. Our operators will get back to you shortly.");
-      onClose();
     } catch (err) {
       console.error("quote submit exception:", err);
-      alert("Request submitted (local). We’ll follow up shortly.");
-      onClose();
+      setSubmitError("Unexpected error. Please try again in a moment.");
     } finally {
       setSubmitting(false);
     }
@@ -389,7 +414,6 @@ export default function QuoteModal({
                 onChange={(e) => setPhone(e.target.value)}
               />
 
-              {/* If you have a Textarea component, swap below */}
               <textarea
                 placeholder="Tell us more (dates, group size, preferred parks, budget)…"
                 rows={6}
@@ -405,6 +429,18 @@ export default function QuoteModal({
                   color: "#111827",
                 }}
               />
+
+              {submitError && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "#b91c1c",
+                    marginTop: 2,
+                  }}
+                >
+                  {submitError}
+                </div>
+              )}
 
               <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
                 <Button

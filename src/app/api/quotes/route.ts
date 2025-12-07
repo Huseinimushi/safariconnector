@@ -20,11 +20,11 @@ const ADMIN_EMAIL =
 /**
  * POST /api/quotes
  *
- * Two modes in one endpoint:
- * 1) PUBLIC (no auth): client-side “Request a Quote” form
+ * Modes:
+ * 1) PUBLIC (no auth): "Request a quote" form from trip page
  *    Body: { trip_id, trip_title?, date, pax, name, email, phone?, note? }
  *
- * 2) OPERATOR (auth required): create/send a formal quote for an existing lead
+ * 2) OPERATOR (auth): create/send a formal quote for an existing lead
  *    Body: { lead_id, total_price, currency?, inclusions?, exclusions?, status? }
  */
 
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     // =====================================================
-    //  1) PUBLIC CLIENT FORM (no auth required)
+    // 1) PUBLIC CLIENT FORM (no auth required)
     // =====================================================
     if (body?.trip_id) {
       const payload = body as Partial<PublicQuotePayload>;
@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
+
       if (!isEmail(payload.email!)) {
         return NextResponse.json(
           { error: "Invalid email." },
@@ -92,18 +93,20 @@ export async function POST(req: NextRequest) {
       // ---------- (a) Save to Supabase ----------
       const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-      const { error: insertError } = await supabase.from("quote_requests").insert({
-        trip_id: payload.trip_id,
-        trip_title: payload.trip_title ?? null,
-        date: payload.date,
-        pax: payload.pax ?? 1,
-        name: payload.name,
-        email: payload.email,
-        phone: payload.phone ?? null,
-        note: payload.note ?? null,
-        ip,
-        user_agent: userAgent,
-      });
+      const { error: insertError } = await supabase
+        .from("quote_requests")
+        .insert({
+          trip_id: payload.trip_id,
+          trip_title: payload.trip_title ?? null,
+          date: payload.date,
+          pax: payload.pax ?? 1,
+          name: payload.name,
+          email: payload.email,
+          phone: payload.phone ?? null,
+          note: payload.note ?? null,
+          ip,
+          user_agent: userAgent,
+        });
 
       if (insertError) {
         console.error("Error inserting quote_requests:", insertError);
@@ -117,9 +120,9 @@ export async function POST(req: NextRequest) {
             ? payload.trip_title
             : "Safari trip";
 
-        // Email kwa admin / internal
-        resend.emails
-          .send({
+        try {
+          // Email kwa admin / internal
+          await resend.emails.send({
             from: FROM_EMAIL,
             to: ADMIN_EMAIL,
             subject: `New quote request – ${tripLabel}`,
@@ -144,14 +147,10 @@ export async function POST(req: NextRequest) {
               <p><b>IP:</b> ${ip}</p>
               <p><b>User-Agent:</b> ${userAgent}</p>
             `,
-          })
-          .catch((err) =>
-            console.error("Error sending admin quote email:", err)
-          );
+          });
 
-        // Email kwa traveller – confirmation
-        resend.emails
-          .send({
+          // Email kwa traveller – confirmation
+          await resend.emails.send({
             from: FROM_EMAIL,
             to: payload.email!,
             subject: "We received your safari quote request",
@@ -159,24 +158,24 @@ export async function POST(req: NextRequest) {
               <p>Hi ${payload.name},</p>
               <p>Thanks for using <b>Safari Connector</b>.</p>
               <p>We have received your request for <b>${tripLabel}</b> on <b>${
-              payload.date
-            }</b> for <b>${payload.pax ?? 1}</b> traveller(s).</p>
+                payload.date
+              }</b> for <b>${payload.pax ?? 1}</b> traveller(s).</p>
               <p>Our team and/or local operators will review your request and get back to you with tailored offers.</p>
               <p>If you didn't make this request, you can ignore this email.</p>
             `,
-          })
-          .catch((err) =>
-            console.error("Error sending traveller confirmation email:", err)
-          );
+          });
+        } catch (err) {
+          console.error("Error sending emails for quote:", err);
+        }
       } else {
         console.warn("RESEND_API_KEY not set – skipping emails for quote.");
       }
 
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ ok: true }, { status: 200 });
     }
 
     // =====================================================
-    //  2) OPERATOR QUOTE (AUTH REQUIRED)
+    // 2) OPERATOR QUOTE (AUTH REQUIRED)
     // =====================================================
     const { supabase, user } = await requireUser();
 
@@ -192,6 +191,7 @@ export async function POST(req: NextRequest) {
     if (!lead_id) {
       return NextResponse.json({ error: "lead_id required" }, { status: 400 });
     }
+
     if (!total_price || Number(total_price) <= 0) {
       return NextResponse.json(
         { error: "total_price required" },
@@ -231,6 +231,7 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) {
+      console.error("Error inserting operator quote:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
