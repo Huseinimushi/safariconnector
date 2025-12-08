@@ -1,550 +1,410 @@
+// src/app/admin/operators-overview/page.tsx
 "use client";
 
-import React, { useEffect, useState, CSSProperties } from "react";
-import Link from "next/link";
+import React, { useEffect, useState, type CSSProperties } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-const BRAND = {
-  ink: "#0E2430",
-  primary: "#1B4D3E",
-  sand: "#F4F3ED",
-  border: "#E1E5ED",
-};
+const BG_SAND = "#F4F3ED";
+const BRAND_GREEN = "#0B6B3A";
+const CARD_BORDER = "#E5E7EB";
 
 type OperatorRow = {
   id: string;
-  name: string | null;
+  company_name: string | null;
   country: string | null;
-  created_at: string | null;
+  location: string | null;
+  email: string | null;
   status: string | null;
-};
-
-type TripRow = {
-  id: string;
-  operator_id: string | null;
   created_at: string | null;
 };
 
-type OperatorWithStats = OperatorRow & {
-  totalTrips: number;
-  lastTripDate: string | null;
-};
-
-const pageWrapper: CSSProperties = {
-  minHeight: "100vh",
-  backgroundColor: BRAND.sand,
-};
-
-const containerStyle: CSSProperties = {
-  maxWidth: 1120,
-  margin: "0 auto",
-  padding: "48px 16px 40px",
-};
-
-const cardStyle: CSSProperties = {
-  backgroundColor: "#ffffff",
-  borderRadius: 24,
-  padding: "20px 24px",
-  boxShadow: "0 8px 30px rgba(15, 23, 42, 0.06)",
-  border: `1px solid ${BRAND.border}`,
-};
-
-const grid3Style: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-  gap: 16,
+type OperatorStats = {
+  total: number;
+  approved: number;
+  pending: number;
+  rejected: number;
 };
 
 export default function AdminOperatorsOverviewPage() {
+  const router = useRouter();
+  const [checking, setChecking] = useState(true);
+  const [allowed, setAllowed] = useState(false);
+
   const [loading, setLoading] = useState(true);
-  const [savingId, setSavingId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [msg, setMsg] = useState<string | null>(null);
 
-  const [operators, setOperators] = useState<OperatorWithStats[]>([]);
-  const [totalOperators, setTotalOperators] = useState(0);
+  const [stats, setStats] = useState<OperatorStats>({
+    total: 0,
+    approved: 0,
+    pending: 0,
+    rejected: 0,
+  });
 
-  // total trips across all operators (from main `trips` table)
-  const [totalMarketplaceTrips, setTotalMarketplaceTrips] = useState(0);
+  const [pendingOperators, setPendingOperators] = useState<OperatorRow[]>([]);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
+  // 🔐 simple admin check for this page
   useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
-      setError(null);
-
+    const checkAdmin = async () => {
       try {
-        // 1) Operators (with status)
-        const {
-          data: opRows,
-          count: opCount,
-          error: opError,
-        } = await supabase
-          .from("operators_view")
-          .select("id, name, country, created_at, status", {
-            count: "exact",
-          })
-          .order("name", { ascending: true });
+        const { data, error } = await supabase.auth.getUser();
 
-        if (opError) throw opError;
+        if (error || !data?.user) {
+          router.replace("/admin/login");
+          return;
+        }
 
-        const operatorsData = (opRows || []) as OperatorRow[];
-        setTotalOperators(
-          typeof opCount === "number" ? opCount : operatorsData.length
-        );
+        const user = data.user;
+        const email = (user.email || "").toLowerCase();
+        const metaRole =
+          (user.app_metadata?.role as string | undefined) ||
+          (user.user_metadata?.role as string | undefined) ||
+          null;
 
-        // 2) Trips from main `trips` table
-        const {
-          data: allTrips,
-          count: marketplaceCount,
-          error: tripsError,
-        } = await supabase
-          .from("trips")
-          .select("id, operator_id, created_at", { count: "exact" });
+        const isAdmin =
+          email === "admin@safariconnector.com" ||
+          (metaRole && metaRole.toLowerCase() === "admin");
 
-        if (tripsError) throw tripsError;
+        if (!isAdmin) {
+          router.replace("/");
+          return;
+        }
 
-        const trips = (allTrips || []) as TripRow[];
-        setTotalMarketplaceTrips(
-          typeof marketplaceCount === "number"
-            ? marketplaceCount
-            : trips.length
-        );
-
-        // 3) Compute per-operator stats from `trips`
-        const withStats: OperatorWithStats[] = operatorsData.map((op) => {
-          const opTrips = trips.filter(
-            (t) => t.operator_id && t.operator_id === op.id
-          );
-
-          const totalTripsForOp = opTrips.length;
-
-          let lastTripDate: string | null = null;
-          if (opTrips.length > 0) {
-            const latest = opTrips.reduce((latest, current) => {
-              if (!latest.created_at) return current;
-              if (!current.created_at) return latest;
-              return new Date(current.created_at) > new Date(latest.created_at)
-                ? current
-                : latest;
-            });
-            lastTripDate = latest.created_at;
-          }
-
-          return {
-            ...op,
-            totalTrips: totalTripsForOp,
-            lastTripDate,
-          };
-        });
-
-        setOperators(withStats);
-      } catch (err: any) {
-        console.error("admin operators overview error:", err);
-        setError(
-          err?.message || "Failed to load operator overview. Please try again."
-        );
+        setAllowed(true);
+      } catch (e) {
+        console.error("admin check error (overview):", e);
+        router.replace("/admin/login");
       } finally {
-        setLoading(false);
+        setChecking(false);
       }
     };
 
-    loadData();
-  }, []);
+    checkAdmin();
+  }, [router]);
 
-  const pendingCount = operators.filter(
-    (op) => (op.status || "").toLowerCase() === "pending"
-  ).length;
+  // load operators once admin allowed
+  useEffect(() => {
+    if (!allowed) return;
 
-  const operatorsWithNoTrips = operators.filter((op) => op.totalTrips === 0)
-    .length;
+    const load = async () => {
+      setLoading(true);
+      setMsg(null);
 
-  // ====== ACTIONS: APPROVE / REJECT / SUSPEND ======
-  const updateStatus = async (
-    id: string,
-    status: "approved" | "rejected" | "suspended"
-  ) => {
-    try {
-      setSavingId(id);
-      setError(null);
-
-      const { error: updateError } = await supabase
+      const { data, error } = await supabase
         .from("operators")
-        .update({ status })
-        .eq("id", id);
-
-      if (updateError) throw updateError;
-
-      // update local state
-      setOperators((prev) =>
-        prev.map((op) =>
-          op.id === id
-            ? {
-                ...op,
-                status,
-              }
-            : op
+        .select<OperatorRow>(
+          "id, company_name, country, location, email, status, created_at"
         )
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("operators load error:", error);
+        setMsg("❌ Failed to load operators. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      const operators = data || [];
+
+      const total = operators.length;
+      const approved = operators.filter(
+        (op) => op.status === "approved"
+      ).length;
+      const pending = operators.filter(
+        (op) => !op.status || op.status === "pending"
+      ).length;
+      const rejected = operators.filter(
+        (op) => op.status === "rejected" || op.status === "blocked"
+      ).length;
+
+      setStats({ total, approved, pending, rejected });
+
+      const pendingList = operators.filter(
+        (op) => !op.status || op.status === "pending"
       );
-    } catch (err: any) {
-      console.error("update operator status error:", err);
-      setError(
-        err?.message ||
-          "Failed to update operator status. Please try again."
-      );
-    } finally {
-      setSavingId(null);
+      setPendingOperators(pendingList);
+
+      setLoading(false);
+    };
+
+    load();
+  }, [allowed]);
+
+  const handleUpdateStatus = async (
+    operatorId: string,
+    newStatus: "approved" | "rejected"
+  ) => {
+    setMsg(null);
+    setUpdatingId(operatorId);
+
+    const { error } = await supabase
+      .from("operators")
+      .update({ status: newStatus })
+      .eq("id", operatorId);
+
+    if (error) {
+      console.error("update operator status error:", error);
+      setMsg("❌ Failed to update operator status. Please try again.");
+      setUpdatingId(null);
+      return;
     }
+
+    setPendingOperators((prev) => prev.filter((op) => op.id !== operatorId));
+
+    setStats((prev) => ({
+      total: prev.total,
+      approved:
+        newStatus === "approved" ? prev.approved + 1 : prev.approved,
+      pending: Math.max(prev.pending - 1, 0),
+      rejected:
+        newStatus === "rejected" ? prev.rejected + 1 : prev.rejected,
+    }));
+
+    setMsg(
+      newStatus === "approved"
+        ? "✅ Operator approved successfully."
+        : "✅ Operator marked as rejected."
+    );
+    setUpdatingId(null);
   };
 
-  return (
-    <div style={pageWrapper}>
-      <div style={containerStyle}>
-        {/* HEADER */}
-        <header
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: 16,
-            marginBottom: 32,
-          }}
-        >
-          <div>
-            <h1
-              style={{
-                fontSize: "2.1rem",
-                lineHeight: 1.1,
-                fontWeight: 600,
-                color: BRAND.primary,
-                marginBottom: 8,
-              }}
-            >
-              Operators overview
-            </h1>
-            <p
-              style={{
-                fontSize: 14,
-                lineHeight: 1.5,
-                color: "#4b5563",
-                maxWidth: 520,
-              }}
-            >
-              View all operators on Safari Connector, approve or reject new
-              applications and see how many trips each supplier has listed.
-            </p>
-          </div>
+  if (checking) {
+    return (
+      <main style={fullPageCenter}>Checking admin access…</main>
+    );
+  }
 
-          <Link
-            href="/admin"
+  if (!allowed) return null;
+
+  if (loading) {
+    return (
+      <main style={fullPageCenter}>Loading operators overview…</main>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        backgroundColor: BG_SAND,
+        minHeight: "100vh",
+        padding: "32px 16px 40px",
+      }}
+    >
+      <main style={{ maxWidth: 1120, margin: "0 auto" }}>
+        <header style={{ marginBottom: 28 }}>
+          <p
             style={{
-              fontSize: 13,
-              color: "#065f46",
-              textDecoration: "none",
-              padding: "8px 14px",
-              borderRadius: 999,
-              border: `1px solid ${BRAND.border}`,
-              backgroundColor: "#ffffff",
+              margin: 0,
+              fontSize: 11,
+              letterSpacing: "0.16em",
+              textTransform: "uppercase",
+              color: "#6B7280",
             }}
           >
-            ← Back to admin overview
-          </Link>
+            Admin · Operators
+          </p>
+          <h1
+            style={{
+              margin: 0,
+              marginTop: 6,
+              fontSize: 30,
+              fontWeight: 800,
+              color: BRAND_GREEN,
+            }}
+          >
+            Operators overview & approvals
+          </h1>
+          <p
+            style={{
+              margin: 0,
+              marginTop: 6,
+              fontSize: 14,
+              color: "#4B5563",
+              maxWidth: 640,
+            }}
+          >
+            Review new operator applications, approve trusted suppliers, and
+            keep Safari Connector&apos;s marketplace curated and safe.
+          </p>
         </header>
 
-        {error && (
+        {msg && (
           <div
             style={{
-              ...cardStyle,
-              borderColor: "#fecaca",
-              backgroundColor: "#fef2f2",
-              color: "#b91c1c",
-              marginBottom: 16,
+              marginBottom: 18,
+              padding: "9px 12px",
+              borderRadius: 10,
+              fontSize: 13,
+              backgroundColor: msg.startsWith("❌")
+                ? "#FEE2E2"
+                : "#ECFDF3",
+              color: msg.startsWith("❌") ? "#B91C1C" : "#166534",
+              border: `1px solid ${CARD_BORDER}`,
             }}
           >
-            <p style={{ fontSize: 14 }}>{error}</p>
+            {msg}
           </div>
         )}
 
-        {/* STATS CARDS */}
-        <section style={{ ...grid3Style, marginBottom: 24 }}>
-          {/* Total operators */}
-          <div style={cardStyle}>
-            <p
-              style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color: BRAND.ink,
-                marginBottom: 4,
-              }}
-            >
-              Total operators
-            </p>
-            <p
-              style={{
-                fontSize: 28,
-                fontWeight: 600,
-                color: BRAND.primary,
-                marginBottom: 2,
-              }}
-            >
-              {totalOperators.toLocaleString("en-US")}
-            </p>
-            <p style={{ fontSize: 12, color: "#6b7280" }}>
+        {/* Stats */}
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 16,
+            marginBottom: 26,
+          }}
+        >
+          <div style={statCard}>
+            <p style={statLabel}>Total operators</p>
+            <p style={statValue}>{stats.total}</p>
+            <p style={statSub}>
               Companies currently registered on Safari Connector.
             </p>
           </div>
-
-          {/* Total marketplace trips (from `trips` table) */}
-          <div style={cardStyle}>
-            <p
-              style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color: BRAND.ink,
-                marginBottom: 4,
-              }}
-            >
-              Total marketplace trips
-            </p>
-            <p
-              style={{
-                fontSize: 28,
-                fontWeight: 600,
-                color: BRAND.primary,
-                marginBottom: 2,
-              }}
-            >
-              {totalMarketplaceTrips.toLocaleString("en-US")}
-            </p>
-            <p style={{ fontSize: 12, color: "#6b7280" }}>
-              Trips currently in the main <code>trips</code> table powering the
-              public marketplace.
+          <div style={statCard}>
+            <p style={statLabel}>Approved & active</p>
+            <p style={statValue}>{stats.approved}</p>
+            <p style={statSub}>
+              Operators visible to travellers and able to receive requests.
             </p>
           </div>
-
-          {/* Operators with no trips / pending */}
-          <div style={cardStyle}>
-            <p
-              style={{
-                fontSize: 13,
-                fontWeight: 600,
-                color: BRAND.ink,
-                marginBottom: 4,
-              }}
-            >
-              Pending & low-supply operators
+          <div style={statCard}>
+            <p style={statLabel}>Pending review</p>
+            <p style={statValue}>{stats.pending}</p>
+            <p style={statSub}>
+              New or updated operators waiting for your approval.
             </p>
-            <p
-              style={{
-                fontSize: 28,
-                fontWeight: 600,
-                color: pendingCount > 0 ? "#b45309" : BRAND.primary,
-                marginBottom: 2,
-              }}
-            >
-              {pendingCount.toLocaleString("en-US")}
-            </p>
-            <p style={{ fontSize: 12, color: "#6b7280" }}>
-              Pending operators awaiting approval.{" "}
-              {operatorsWithNoTrips > 0 &&
-                `There are also ${operatorsWithNoTrips} operators with no trips yet.`}
+          </div>
+          <div style={statCard}>
+            <p style={statLabel}>Rejected / blocked</p>
+            <p style={statValue}>{stats.rejected}</p>
+            <p style={statSub}>
+              Operators you&apos;ve chosen not to list.
             </p>
           </div>
         </section>
 
-        {/* LIST OF OPERATORS */}
-        <section style={cardStyle}>
-          <div
+        {/* Pending list */}
+        <section
+          style={{
+            borderRadius: 20,
+            backgroundColor: "#FFFFFF",
+            border: `1px solid ${CARD_BORDER}`,
+            padding: "18px 18px 20px",
+          }}
+        >
+          <h2
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "baseline",
-              marginBottom: 12,
+              margin: 0,
+              marginBottom: 6,
+              fontSize: 18,
+              fontWeight: 700,
+              color: "#111827",
             }}
           >
-            <div>
-              <p
-                style={{
-                  fontSize: 14,
-                  fontWeight: 600,
-                  color: BRAND.ink,
-                }}
-              >
-                All operators
-              </p>
-              <p
-                style={{
-                  fontSize: 12,
-                  color: "#6b7280",
-                }}
-              >
-                Browse suppliers, approve applications and jump into their
-                dashboards.
-              </p>
-            </div>
-            <p
-              style={{
-                fontSize: 12,
-                color: "#6b7280",
-              }}
-            >
-              Sorted A → Z
-            </p>
-          </div>
+            Pending operator applications
+          </h2>
+          <p
+            style={{
+              margin: 0,
+              marginBottom: 10,
+              fontSize: 13,
+              color: "#6B7280",
+            }}
+          >
+            Approve trusted suppliers so they can start receiving quote
+            requests.
+          </p>
 
-          {loading ? (
-            <p
-              style={{
-                fontSize: 14,
-                color: "#9ca3af",
-                textAlign: "center",
-                padding: "16px 0",
-              }}
-            >
-              Loading operators…
-            </p>
-          ) : operators.length === 0 ? (
-            <p
-              style={{
-                fontSize: 14,
-                color: "#9ca3af",
-                textAlign: "center",
-                padding: "16px 0",
-              }}
-            >
-              No operators have been registered yet.
+          {pendingOperators.length === 0 ? (
+            <p style={{ fontSize: 13, color: "#6B7280" }}>
+              No operators are currently waiting for approval.
             </p>
           ) : (
-            operators.map((op) => {
-              const status = (op.status || "pending").toLowerCase();
-
-              const isPending = status === "pending";
-
-              let statusLabel = "Pending";
-              let statusColor = "#b45309";
-              let statusBg = "#fef3c7";
-
-              if (status === "approved") {
-                statusLabel = "Approved";
-                statusColor = "#166534";
-                statusBg = "#dcfce7";
-              } else if (status === "rejected") {
-                statusLabel = "Rejected";
-                statusColor = "#991b1b";
-                statusBg = "#fee2e2";
-              } else if (status === "suspended") {
-                statusLabel = "Suspended";
-                statusColor = "#92400e";
-                statusBg = "#fffbeb";
-              }
-
-              return (
+            <div style={{ borderTop: `1px solid ${CARD_BORDER}` }}>
+              {pendingOperators.map((op) => (
                 <div
                   key={op.id}
                   style={{
-                    padding: "12px 0",
-                    borderTop: `1px solid ${BRAND.border}`,
                     display: "flex",
+                    alignItems: "flex-start",
                     justifyContent: "space-between",
-                    alignItems: "center",
+                    padding: "10px 0",
+                    borderBottom: `1px solid ${CARD_BORDER}`,
                     gap: 12,
                   }}
                 >
-                  {/* Left: summary */}
                   <div style={{ flex: 1 }}>
                     <p
                       style={{
+                        margin: 0,
                         fontSize: 14,
                         fontWeight: 600,
-                        color: BRAND.ink,
-                        marginBottom: 2,
+                        color: "#111827",
                       }}
                     >
-                      {op.name || "Unnamed operator"}
+                      {op.company_name || "Untitled operator"}
                     </p>
                     <p
                       style={{
-                        fontSize: 12,
-                        color: "#6b7280",
-                      }}
-                    >
-                      {op.country || "Country not set"}
-                    </p>
-                    <p
-                      style={{
-                        fontSize: 11,
-                        color: "#9ca3af",
+                        margin: 0,
                         marginTop: 2,
+                        fontSize: 12,
+                        color: "#4B5563",
                       }}
                     >
-                      {op.created_at
-                        ? `Joined ${new Date(
-                            op.created_at
-                          ).toLocaleDateString()}`
-                        : "Joined date unknown"}
+                      {op.country || "Unknown country"}
+                      {op.location ? ` · ${op.location}` : ""}
                     </p>
+                    {op.email && (
+                      <p
+                        style={{
+                          margin: 0,
+                          marginTop: 2,
+                          fontSize: 12,
+                          color: "#6B7280",
+                        }}
+                      >
+                        {op.email}
+                      </p>
+                    )}
+                    {op.created_at && (
+                      <p
+                        style={{
+                          margin: 0,
+                          marginTop: 2,
+                          fontSize: 11,
+                          color: "#9CA3AF",
+                        }}
+                      >
+                        Joined{" "}
+                        {new Date(op.created_at).toLocaleDateString()}
+                      </p>
+                    )}
                   </div>
 
-                  {/* Middle: stats */}
                   <div
                     style={{
-                      textAlign: "right",
-                      minWidth: 140,
-                      fontSize: 12,
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontWeight: 600,
-                        color: BRAND.ink,
-                      }}
-                    >
-                      {op.totalTrips.toLocaleString("en-US")} trips
-                    </div>
-                    <div style={{ color: "#9ca3af", marginTop: 2 }}>
-                      {op.lastTripDate
-                        ? `Last trip ${new Date(
-                            op.lastTripDate
-                          ).toLocaleDateString()}`
-                        : "No trips yet"}
-                    </div>
-                    <span
-                      style={{
-                        display: "inline-block",
-                        marginTop: 6,
-                        padding: "4px 10px",
-                        borderRadius: 999,
-                        fontSize: 11,
-                        fontWeight: 500,
-                        color: statusColor,
-                        backgroundColor: statusBg,
-                      }}
-                    >
-                      {statusLabel}
-                    </span>
-                  </div>
-
-                  {/* Right: actions */}
-                  <div
-                    style={{
-                      textAlign: "right",
-                      minWidth: 220,
-                      fontSize: 12,
                       display: "flex",
                       flexDirection: "column",
                       gap: 6,
                       alignItems: "flex-end",
                     }}
                   >
-                    <Link
-                      href={`/admin/operators/${op.id}`}
+                    <span
                       style={{
-                        fontSize: 12,
-                        fontWeight: 500,
-                        color: "#065f46",
-                        textDecoration: "none",
+                        fontSize: 11,
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        backgroundColor: "#FEF3C7",
+                        color: "#92400E",
+                        border: "1px solid #FCD34D",
                       }}
                     >
-                      View operator dashboard →
-                    </Link>
+                      Pending review
+                    </span>
 
                     <div
                       style={{
@@ -553,91 +413,96 @@ export default function AdminOperatorsOverviewPage() {
                         marginTop: 4,
                       }}
                     >
-                      {/* Reject – mostly for pending */}
-                      {isPending && (
-                        <button
-                          onClick={() => updateStatus(op.id, "rejected")}
-                          disabled={savingId === op.id}
-                          style={{
-                            fontSize: 11,
-                            padding: "4px 8px",
-                            borderRadius: 999,
-                            border: `1px solid #fecaca`,
-                            backgroundColor: "#fef2f2",
-                            color: "#b91c1c",
-                            cursor:
-                              savingId === op.id ? "not-allowed" : "pointer",
-                          }}
-                        >
-                          {savingId === op.id ? "…" : "Reject"}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        disabled={updatingId === op.id}
+                        onClick={() =>
+                          handleUpdateStatus(op.id, "approved")
+                        }
+                        style={{
+                          padding: "6px 10px",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          borderRadius: 999,
+                          border: "none",
+                          backgroundColor: "#BBF7D0",
+                          color: "#14532D",
+                          cursor:
+                            updatingId === op.id ? "default" : "pointer",
+                          opacity: updatingId === op.id ? 0.7 : 1,
+                        }}
+                      >
+                        {updatingId === op.id ? "Updating…" : "Approve"}
+                      </button>
 
-                      {/* Approve – for pending or suspended */}
-                      {(isPending || status === "suspended") && (
-                        <button
-                          onClick={() => updateStatus(op.id, "approved")}
-                          disabled={savingId === op.id}
-                          style={{
-                            fontSize: 11,
-                            padding: "4px 10px",
-                            borderRadius: 999,
-                            border: "none",
-                            backgroundColor: "#16a34a",
-                            color: "#ffffff",
-                            cursor:
-                              savingId === op.id ? "not-allowed" : "pointer",
-                          }}
-                        >
-                          {savingId === op.id ? "Saving…" : "Approve"}
-                        </button>
-                      )}
-
-                      {/* Suspend – only for approved */}
-                      {status === "approved" && (
-                        <button
-                          onClick={() => updateStatus(op.id, "suspended")}
-                          disabled={savingId === op.id}
-                          style={{
-                            fontSize: 11,
-                            padding: "4px 8px",
-                            borderRadius: 999,
-                            border: `1px solid #fcd34d`,
-                            backgroundColor: "#fffbeb",
-                            color: "#92400e",
-                            cursor:
-                              savingId === op.id ? "not-allowed" : "pointer",
-                          }}
-                        >
-                          {savingId === op.id ? "Saving…" : "Suspend"}
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        disabled={updatingId === op.id}
+                        onClick={() =>
+                          handleUpdateStatus(op.id, "rejected")
+                        }
+                        style={{
+                          padding: "6px 10px",
+                          fontSize: 12,
+                          fontWeight: 500,
+                          borderRadius: 999,
+                          border: "1px solid #FECACA",
+                          backgroundColor: "#FEF2F2",
+                          color: "#B91C1C",
+                          cursor:
+                            updatingId === op.id ? "default" : "pointer",
+                          opacity: updatingId === op.id ? 0.7 : 1,
+                        }}
+                      >
+                        Reject
+                      </button>
                     </div>
                   </div>
                 </div>
-              );
-            })
+              ))}
+            </div>
           )}
         </section>
-      </div>
+      </main>
     </div>
   );
 }
 
-/* ========== SMALL COMPONENTS ========== */
+const fullPageCenter: CSSProperties = {
+  minHeight: "100vh",
+  backgroundColor: BG_SAND,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 14,
+  color: "#6B7280",
+};
 
-function SnapshotRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        marginBottom: 6,
-        fontSize: 14,
-      }}
-    >
-      <span style={{ color: "#6b7280" }}>{label}</span>
-      <span style={{ fontWeight: 600, color: BRAND.ink }}>{value}</span>
-    </div>
-  );
-}
+const statCard: CSSProperties = {
+  borderRadius: 18,
+  backgroundColor: "#FFFFFF",
+  border: `1px solid ${CARD_BORDER}`,
+  padding: "14px 16px 16px",
+};
+
+const statLabel: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: "#6B7280",
+  margin: 0,
+};
+
+const statValue: CSSProperties = {
+  fontSize: 22,
+  fontWeight: 800,
+  color: "#111827",
+  margin: 0,
+  marginTop: 4,
+};
+
+const statSub: CSSProperties = {
+  fontSize: 12,
+  color: "#6B7280",
+  margin: 0,
+  marginTop: 4,
+};

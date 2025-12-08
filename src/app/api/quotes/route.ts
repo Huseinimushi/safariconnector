@@ -21,10 +21,21 @@ const ADMIN_EMAIL =
  * POST /api/quotes
  *
  * Modes:
- * 1) PUBLIC (no auth): "Request a quote" form from trip page
- *    Body: { trip_id, trip_title?, date, pax, name, email, phone?, note? }
+ * 1) PUBLIC (no auth required): "Request a quote" form from trip page
+ *    Body: {
+ *      trip_id,
+ *      trip_title?,
+ *      date,
+ *      pax,
+ *      name,
+ *      email,
+ *      phone?,
+ *      note?,
+ *      operator_id?,   // for routing to correct operator
+ *      traveller_id?   // logged-in traveller id (optional)
+ *    }
  *
- * 2) OPERATOR (auth): create/send a formal quote for an existing lead
+ * 2) OPERATOR (auth required): create/send a formal quote for an existing lead
  *    Body: { lead_id, total_price, currency?, inclusions?, exclusions?, status? }
  */
 
@@ -37,6 +48,8 @@ type PublicQuotePayload = {
   email: string;
   phone?: string;
   note?: string;
+  operator_id?: string | null;
+  traveller_id?: string | null;
 };
 
 type OperatorQuotePayload = {
@@ -93,9 +106,45 @@ export async function POST(req: NextRequest) {
       // ---------- (a) Save to Supabase ----------
       const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-      const { error: insertError } = await supabase
+      // Jaribu kwanza insert na operator_id / traveller_id kama zipo
+      const baseInsert: any = {
+        trip_id: payload.trip_id,
+        trip_title: payload.trip_title ?? null,
+        date: payload.date,
+        pax: payload.pax ?? 1,
+        name: payload.name,
+        email: payload.email,
+        phone: payload.phone ?? null,
+        note: payload.note ?? null,
+        ip,
+        user_agent: userAgent,
+      };
+
+      if (payload.operator_id) {
+        baseInsert.operator_id = payload.operator_id;
+      }
+      if (payload.traveller_id) {
+        baseInsert.traveller_id = payload.traveller_id;
+      }
+
+      let { error: insertError } = await supabase
         .from("quote_requests")
-        .insert({
+        .insert(baseInsert);
+
+      // Kama kuna error kwa sababu ya columns extra (operator_id / traveller_id),
+      // jaribu tena bila hizo ili isivunje system ya zamani.
+      if (
+        insertError &&
+        typeof insertError.message === "string" &&
+        insertError.message.toLowerCase().includes("column") &&
+        insertError.message.toLowerCase().includes("does not exist")
+      ) {
+        console.warn(
+          "quote_requests insert failed with extra columns, retrying with minimal payload...",
+          insertError.message
+        );
+
+        const minimalInsert = {
           trip_id: payload.trip_id,
           trip_title: payload.trip_title ?? null,
           date: payload.date,
@@ -106,11 +155,21 @@ export async function POST(req: NextRequest) {
           note: payload.note ?? null,
           ip,
           user_agent: userAgent,
-        });
+        };
+
+        const retry = await supabase
+          .from("quote_requests")
+          .insert(minimalInsert);
+
+        insertError = retry.error;
+      }
 
       if (insertError) {
         console.error("Error inserting quote_requests:", insertError);
-        // bado tunamjibu user OK ili asione error ya system
+        return NextResponse.json(
+          { error: insertError.message || "Failed to save your request." },
+          { status: 500 }
+        );
       }
 
       // ---------- (b) Send emails (if RESEND configured) ----------
@@ -141,6 +200,11 @@ export async function POST(req: NextRequest) {
               ${
                 payload.note
                   ? `<p><b>Note:</b><br/>${payload.note}</p>`
+                  : ""
+              }
+              ${
+                payload.operator_id
+                  ? `<p><b>Operator ID:</b> ${payload.operator_id}</p>`
                   : ""
               }
               <hr/>

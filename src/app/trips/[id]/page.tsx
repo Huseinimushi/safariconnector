@@ -25,8 +25,8 @@ type Trip = {
   // Optional rich fields
   overview: string | null;
   highlights: string[] | null; // optional “key bullets”
-  includes: string[] | null;   // operator add trip: Included
-  excludes: string[] | null;   // operator add trip: Excluded
+  includes: string[] | null; // operator add trip: Included
+  excludes: string[] | null; // operator add trip: Excluded
 };
 
 type TripDay = { day: number; title: string; desc: string | null };
@@ -253,9 +253,7 @@ export default async function TripDetailPage({
           {(trip.overview || trip.description) && (
             <section className={s.card}>
               <h2 className={s.h2}>Overview</h2>
-              <p className={s.lead}>
-                {trip.overview || trip.description}
-              </p>
+              <p className={s.lead}>{trip.overview || trip.description}</p>
 
               {!!overviewBullets.length && (
                 <ul
@@ -561,6 +559,8 @@ export default async function TripDetailPage({
               // 🔐 pass traveller defaults into the enquiry form
               initialName={travellerPrefill.name}
               initialEmail={travellerPrefill.email}
+              // ⭐ pass operatorId ili request i-route kwa operator sahihi
+              operatorId={trip.operator_id}
             />
 
             {operator && (

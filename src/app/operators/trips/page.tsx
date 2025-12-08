@@ -8,6 +8,12 @@ import { supabase } from "@/lib/supabaseClient";
 /* -------- Types -------- */
 
 type OperatorRow = {
+  id: string;
+  user_id?: string | null;
+  operator_id?: string | null;
+  name?: string | null;
+  company_name?: string | null;
+  status?: string | null; // pending / approved / live / ...
   [key: string]: any;
 };
 
@@ -44,16 +50,23 @@ export default function OperatorTripsPage() {
 
       try {
         // 1) Current user
-        const { data: userResp, error: userErr } = await supabase.auth.getUser();
-        if (userErr || !userResp?.user) {
+        const {
+          data: { user },
+          error: userErr,
+        } = await supabase.auth.getUser();
+
+        if (userErr) {
           console.error("operator trips auth error:", userErr);
+        }
+
+        if (!user) {
           if (!isMounted) return;
           setErrorMsg("Please log in as an operator to manage your trips.");
+          setOperator(null);
+          setTrips([]);
           setLoading(false);
           return;
         }
-
-        const user = userResp.user;
 
         // 2) Operator profile (operators_view → operators fallback)
         let operatorRow: OperatorRow | null = null;
@@ -79,7 +92,9 @@ export default function OperatorTripsPage() {
             .eq("user_id", user.id)
             .limit(1);
 
-          if (opErr) console.warn("operators fallback trips error:", opErr);
+          if (opErr) {
+            console.warn("operators fallback trips error:", opErr);
+          }
           if (opRows && opRows.length > 0) {
             operatorRow = opRows[0] as OperatorRow;
           }
@@ -156,6 +171,32 @@ export default function OperatorTripsPage() {
 
   const tripsCount = trips.length;
 
+  // -------- NEW: Approval logic --------
+  const rawStatus = (operator?.status as string) || "pending";
+  const canPostTrips =
+    rawStatus === "approved" || rawStatus === "live";
+
+  const statusLabel =
+    rawStatus === "approved" || rawStatus === "live"
+      ? "Approved – you can post trips and receive enquiries."
+      : rawStatus === "pending"
+      ? "Pending approval – you can’t add new trips yet."
+      : "Not listed – contact support.";
+
+  const statusColor =
+    rawStatus === "approved" || rawStatus === "live"
+      ? "#ECFDF3"
+      : rawStatus === "pending"
+      ? "#FEF3C7"
+      : "#FEE2E2";
+
+  const statusTextColor =
+    rawStatus === "approved" || rawStatus === "live"
+      ? "#166534"
+      : rawStatus === "pending"
+      ? "#92400E"
+      : "#B91C1C";
+
   return (
     <main
       style={{
@@ -210,7 +251,7 @@ export default function OperatorTripsPage() {
           </p>
         </div>
 
-        {/* NEW: back to dashboard button */}
+        {/* back to dashboard button */}
         <Link
           href="/operators/dashboard"
           style={{
@@ -233,10 +274,28 @@ export default function OperatorTripsPage() {
         </Link>
       </div>
 
+      {/* Operator status banner */}
+      {operator && (
+        <div
+          style={{
+            marginTop: 10,
+            marginBottom: 12,
+            borderRadius: 12,
+            padding: "8px 12px",
+            backgroundColor: statusColor,
+            border: "1px solid #E5E7EB",
+            fontSize: 13,
+            color: statusTextColor,
+          }}
+        >
+          <strong>{operatorName}</strong>: {statusLabel}
+        </div>
+      )}
+
       {errorMsg && (
         <div
           style={{
-            marginTop: 16,
+            marginTop: 8,
             marginBottom: 12,
             borderRadius: 16,
             padding: "10px 12px",
@@ -253,7 +312,7 @@ export default function OperatorTripsPage() {
       {/* Main trips section */}
       <section
         style={{
-          marginTop: 22,
+          marginTop: 12,
           borderRadius: 24,
           backgroundColor: "#FFFFFF",
           border: "1px solid #E5E7EB",
@@ -293,22 +352,42 @@ export default function OperatorTripsPage() {
             </p>
           </div>
 
-          <Link
-            href="/operators/trips/new" // TODO: badilisha kama route yako ya ku-create trip ni tofauti
-            style={{
-              padding: "8px 14px",
-              borderRadius: 999,
-              backgroundColor: "#0B6B3A",
-              color: "#FFFFFF",
-              fontSize: 13,
-              fontWeight: 600,
-              textDecoration: "none",
-              boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
-              whiteSpace: "nowrap",
-            }}
-          >
-            + Add new trip
-          </Link>
+          {canPostTrips ? (
+            <Link
+              href="/operators/trips/new"
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                backgroundColor: "#0B6B3A",
+                color: "#FFFFFF",
+                fontSize: 13,
+                fontWeight: 600,
+                textDecoration: "none",
+                boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
+                whiteSpace: "nowrap",
+              }}
+            >
+              + Add new trip
+            </Link>
+          ) : (
+            <button
+              type="button"
+              disabled
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: "1px solid #D1D5DB",
+                backgroundColor: "#E5E7EB",
+                color: "#6B7280",
+                fontSize: 13,
+                fontWeight: 500,
+                cursor: "not-allowed",
+                whiteSpace: "nowrap",
+              }}
+            >
+              + Add new trip (awaiting approval)
+            </button>
+          )}
         </div>
 
         {loading ? (
@@ -332,9 +411,18 @@ export default function OperatorTripsPage() {
               color: "#4B5563",
             }}
           >
-            You haven&apos;t created any trips yet. Click{" "}
-            <strong>&ldquo;Add new trip&rdquo;</strong> to publish your first
-            itinerary.
+            You haven&apos;t created any trips yet.{" "}
+            {canPostTrips ? (
+              <>
+                Click <strong>&ldquo;Add new trip&rdquo;</strong> to publish
+                your first itinerary.
+              </>
+            ) : (
+              <>
+                Your account is still pending approval. Once approved, you&apos;ll
+                be able to add trips here.
+              </>
+            )}
           </div>
         ) : (
           <div
@@ -417,7 +505,7 @@ export default function OperatorTripsPage() {
                         |
                       </span>
                       <Link
-                        href={`/operators/trips/${trip.id}`} // TODO: edit route yako ikae hapa
+                        href={`/operators/trips/${trip.id}`} // edit route yako
                         style={{
                           color: "#2563EB",
                           textDecoration: "none",
@@ -458,13 +546,9 @@ export default function OperatorTripsPage() {
                         fontWeight: 600,
                         textTransform: "lowercase",
                         backgroundColor:
-                          statusLabel === "active"
-                            ? "#FEF3C7"
-                            : "#E5E7EB",
+                          statusLabel === "active" ? "#FEF3C7" : "#E5E7EB",
                         color:
-                          statusLabel === "active"
-                            ? "#92400E"
-                            : "#4B5563",
+                          statusLabel === "active" ? "#92400E" : "#4B5563",
                       }}
                     >
                       {statusLabel}

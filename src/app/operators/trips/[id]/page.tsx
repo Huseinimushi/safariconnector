@@ -57,18 +57,26 @@ const fromCsv = (parks: string[] | null) => (parks ?? []).join(", ");
 export default function EditTripPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
   const router = useRouter();
   const supabase = supabaseBrowser; // tayari ni client
-  const tripId = params.id;
 
+  const [tripId, setTripId] = useState<string | null>(null);
   const [operator, setOperator] = useState<OperatorRow | null>(null);
   const [form, setForm] = useState<TripForm | null>(null);
   const [days, setDays] = useState<DayBlock[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+
+  /* ───────── Resolve param (Next 16: params is Promise) ───────── */
+  useEffect(() => {
+    (async () => {
+      const p = await params;
+      setTripId(p.id);
+    })();
+  }, [params]);
 
   /* ───────── Load trip + operator + days ───────── */
   useEffect(() => {
@@ -786,7 +794,7 @@ const h2Style: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
   width: "100%",
   borderRadius: 10,
-  border: "1px solid "#D1D5DB",
+  border: "1px solid #D1D5DB", // ✅ fixed
   padding: "6px 9px",
   fontSize: 13,
   outline: "none",

@@ -14,6 +14,8 @@ type Props = {
   /** bado zipo optional ukitaka uzitumie kutoka server */
   initialName?: string;
   initialEmail?: string;
+  /** operator wa huu trip – kutoka trip.operator_id */
+  operatorId?: string | null;
 };
 
 const BRAND = {
@@ -32,6 +34,7 @@ export default function EnquiryCard({
   price_to,
   initialName,
   initialEmail,
+  operatorId,
 }: Props) {
   const { user } = useAuth(); // 🔐 current traveller (browser auth)
 
@@ -210,8 +213,8 @@ export default function EnquiryCard({
           email: payload.email,
           phone: payload.phone || null,
           note: composedNote,
-          // unaweza baadaye ukaongezea traveller_id ukitaka:
-          // traveller_id: activeUser.id,
+          traveller_id: activeUser.id,      // ⭐ link na user
+          operator_id: operatorId ?? null,  // ⭐ link na operator wa trip
         },
       ]);
 

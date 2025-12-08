@@ -1,7 +1,7 @@
 // src/app/operators/register/page.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -11,13 +11,24 @@ const BRAND_GOLD = "#D4A017";
 
 type OperatorRow = {
   id: string;
+  name: string | null;
   company_name: string | null;
   contact_person: string | null;
   email: string | null;
   country: string | null;
   location: string | null;
   status: string | null;
+  // slug: string | null; // unaweza kuongeza ukitaka, sio lazima kwa sasa
 };
+
+// Helper ya kutengeneza slug kutoka kwenye company name
+function slugify(raw: string): string {
+  return raw
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-") // badilisha spaces & symbols → dash
+    .replace(/^-+|-+$/g, ""); // toa dash za mwanzo/mwisho
+}
 
 export default function OperatorRegisterPage() {
   const router = useRouter();
@@ -39,6 +50,7 @@ export default function OperatorRegisterPage() {
       setLoading(true);
       setMsg(null);
 
+      // 1. Lazima awe logged in kama operator user
       const {
         data: { user },
         error: userError,
@@ -46,46 +58,61 @@ export default function OperatorRegisterPage() {
 
       if (userError) {
         console.error("auth error:", userError);
-        setMsg("❌ Failed to check login. Please log in again.");
+        setMsg("❌ Failed to check login. Please log in as an operator.");
         setLoading(false);
         return;
       }
 
       if (!user) {
-        router.push("/operators/login");
+        // Kama hana account / haja-login → peleka login
+        router.replace("/operators/login");
         return;
       }
 
-      // Angalia kama tayari ana operator profile
+      // 2. Cheki kama tayari ana operator profile
       const { data: op, error: opError } = await supabase
         .from("operators")
-        .select(
-          "id, company_name, contact_person, email, country, location, status"
+        .select<OperatorRow>(
+          "id, name, company_name, contact_person, email, country, location, status"
         )
         .eq("user_id", user.id)
         .maybeSingle();
 
       if (opError) {
         console.error("operator load error:", opError);
-        setMsg("⚠ Could not check existing operator profile. You can still create one.");
+        setMsg(
+          "⚠ Could not check existing operator profile. You can still create one."
+        );
+        setEmail(user.email || "");
         setLoading(false);
         return;
       }
 
       if (op) {
-        // Tuna-edit existing profile
+        // Existing profile → edit
         setOperatorId(op.id);
-        setCompanyName(op.company_name || "");
+        setCompanyName(op.company_name || op.name || "");
         setContactPerson(op.contact_person || "");
         setEmail(op.email || user.email || "");
         setCountry(op.country || "");
         setLocation(op.location || "");
-        setMsg("ℹ You already have an operator profile. You can update the details below.");
-      }
 
-      if (!op) {
+        const statusLabel =
+          !op.status || op.status === "pending"
+            ? "pending admin approval"
+            : op.status === "approved"
+            ? "approved"
+            : "not listed";
+
+        setMsg(
+          `ℹ You already have an operator profile (${statusLabel}). You can update the details below.`
+        );
+      } else {
         // New profile
         setEmail(user.email || "");
+        setMsg(
+          "ℹ Create your operator profile. After approval you’ll be able to post trips."
+        );
       }
 
       setLoading(false);
@@ -102,6 +129,8 @@ export default function OperatorRegisterPage() {
       return;
     }
 
+    const slug = slugify(companyName);
+
     setSaving(true);
     try {
       const {
@@ -111,62 +140,78 @@ export default function OperatorRegisterPage() {
 
       if (userError || !user) {
         console.error("auth error during save:", userError);
-        setMsg("❌ Authentication problem. Please log in again.");
+        setMsg("❌ Authentication problem. Please log in again as operator.");
         setSaving(false);
-        router.push("/operators/login");
+        router.replace("/operators/login");
         return;
       }
 
       if (operatorId) {
-        // Update existing
+        // 🔁 Update existing operator profile
         const { error } = await supabase
           .from("operators")
           .update({
+            name: companyName,
             company_name: companyName,
             contact_person: contactPerson,
             email,
             country,
             location,
+            slug, // weka slug pia kwenye update
           })
           .eq("id", operatorId);
 
         if (error) {
-          console.error("operator update error:", error);
+          console.error(
+            "operator update error:",
+            JSON.stringify(error, null, 2)
+          );
           setMsg(
-            "❌ Failed to update operator profile. Check columns in operators table."
+            `❌ Failed to update operator profile: ${
+              (error as any).message || "Unknown error"
+            }`
           );
           setSaving(false);
           return;
         }
 
         setMsg("✅ Operator profile updated.");
-        router.push("/operators/trips");
       } else {
-        // Create new
-        const { error } = await supabase.from("operators").insert({
-          user_id: user.id,
-          company_name: companyName,
-          contact_person: contactPerson,
-          email,
-          country,
-          location,
-          status: "pending",
-        });
+        // 🆕 Create new operator profile linked to this user
+        const { error } = await supabase.from("operators").insert([
+          {
+            user_id: user.id,
+            name: companyName,
+            company_name: companyName,
+            contact_person: contactPerson,
+            email,
+            country,
+            location,
+            slug, // 👈 IMPORTANT: fix for NOT NULL slug
+            status: "pending", // admin must approve
+          },
+        ]);
 
         if (error) {
-          console.error("operator insert error:", error);
+          console.error(
+            "operator insert error:",
+            JSON.stringify(error, null, 2)
+          );
           setMsg(
-            "❌ Failed to create operator profile. Check columns in operators table."
+            `❌ Failed to create operator profile: ${
+              (error as any).message || "Unknown error"
+            }`
           );
           setSaving(false);
           return;
         }
 
-        setMsg("✅ Operator profile created. Redirecting to dashboard…");
-        router.push("/operators/trips");
+        setMsg(
+          "✅ Your operator profile has been created and is pending admin approval. You can use your dashboard, but posting trips will be enabled after approval."
+        );
       }
     } catch (e: any) {
-      console.error(e);
+      console.error("operator save unexpected error:", e);
       setMsg("❌ Unexpected error while saving operator profile.");
     } finally {
       setSaving(false);
@@ -176,7 +221,7 @@ export default function OperatorRegisterPage() {
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
-      router.push("/operators/login");
+      router.replace("/operators/login");
     } catch (e) {
       console.error(e);
     }
@@ -243,7 +288,9 @@ export default function OperatorRegisterPage() {
                 color: BRAND_GREEN,
               }}
             >
-              {operatorId ? "Update your operator profile" : "Create operator profile"}
+              {operatorId
+                ? "Update your operator profile"
+                : "Create operator profile"}
             </h1>
             <p
               style={{
@@ -254,8 +301,8 @@ export default function OperatorRegisterPage() {
                 maxWidth: 480,
               }}
             >
-              Tell travellers who you are. These details appear on your public
-              profile and are used when we send you enquiries.
+              These details appear on your public operator page and are used
+              when travellers send you enquiries.
             </p>
           </div>
 
@@ -321,17 +368,7 @@ export default function OperatorRegisterPage() {
             }}
           >
             <div>
-              <label
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "#374151",
-                  marginBottom: 4,
-                  display: "block",
-                }}
-              >
-                Company name
-              </label>
+              <label style={labelStyle}>Company name</label>
               <input
                 type="text"
                 value={companyName}
@@ -342,17 +379,7 @@ export default function OperatorRegisterPage() {
             </div>
 
             <div>
-              <label
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "#374151",
-                  marginBottom: 4,
-                  display: "block",
-                }}
-              >
-                Contact person
-              </label>
+              <label style={labelStyle}>Contact person</label>
               <input
                 type="text"
                 value={contactPerson}
@@ -363,17 +390,7 @@ export default function OperatorRegisterPage() {
             </div>
 
             <div>
-              <label
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "#374151",
-                  marginBottom: 4,
-                  display: "block",
-                }}
-              >
-                Email
-              </label>
+              <label style={labelStyle}>Email</label>
               <input
                 type="email"
                 value={email}
@@ -384,17 +401,7 @@ export default function OperatorRegisterPage() {
             </div>
 
             <div>
-              <label
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "#374151",
-                  marginBottom: 4,
-                  display: "block",
-                }}
-              >
-                Country
-              </label>
+              <label style={labelStyle}>Country</label>
               <input
                 type="text"
                 value={country}
@@ -405,17 +412,7 @@ export default function OperatorRegisterPage() {
             </div>
 
             <div>
-              <label
-                style={{
-                  fontSize: 12,
-                  fontWeight: 600,
-                  color: "#374151",
-                  marginBottom: 4,
-                  display: "block",
-                }}
-              >
-                Main base / city
-              </label>
+              <label style={labelStyle}>Main base / city</label>
               <input
                 type="text"
                 value={location}
@@ -462,7 +459,15 @@ export default function OperatorRegisterPage() {
   );
 }
 
-const inputStyle: React.CSSProperties = {
+const labelStyle: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: "#374151",
+  marginBottom: 4,
+  display: "block",
+};
+
+const inputStyle: CSSProperties = {
   width: "100%",
   padding: "8px 10px",
   borderRadius: 8,

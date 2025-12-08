@@ -1,3 +1,4 @@
+// src/app/traveller/quotes/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -5,30 +6,25 @@ import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-/* ---------- Types ---------- */
+/* ---------- Types (quote_requests + quote_request_messages) ---------- */
 
-type QuoteRow = {
-  id: string;
-  operator_id: string;
-  email: string | null;
-  travel_start_date: string | null;
-  travel_end_date: string | null;
-  group_size: number | null;
-  message: string | null;
-  status?: string | null;
+type EnquiryRow = {
+  id: number;
+  trip_id: string | null;
+  trip_title: string | null;
+  date: string | null; // preferred date
+  pax: number | null;
+  name: string;
+  email: string;
+  phone: string | null;
+  note: string | null;
   created_at: string | null;
 };
 
-type OperatorRow = {
-  id: string;
-  name?: string | null;
-  company_name?: string | null;
-};
-
-type ReplyRow = {
-  id: string;
-  quote_id: string;
-  sender_role: string | null;
+type MessageRow = {
+  id: number;
+  quote_request_id: number;
+  sender_role: string | null; // 'operator' | 'traveller'
   message: string | null;
   created_at: string | null;
 };
@@ -59,10 +55,11 @@ const setUnreadMap = (map: Record<string, number>) => {
   }
 };
 
-const markQuoteSeen = (quoteId: string) => {
-  if (!quoteId) return;
+const markEnquirySeen = (enquiryId: number | string) => {
+  if (!enquiryId) return;
+  const key = String(enquiryId);
   const map = getUnreadMap();
-  map[quoteId] = Date.now();
+  map[key] = Date.now();
   setUnreadMap(map);
 };
 
@@ -92,10 +89,11 @@ const setClosedMap = (map: Record<string, boolean>) => {
   }
 };
 
-const markQuoteClosedLocal = (quoteId: string) => {
-  if (!quoteId) return;
+const markEnquiryClosedLocal = (enquiryId: number | string) => {
+  if (!enquiryId) return;
+  const key = String(enquiryId);
   const map = getClosedMap();
-  map[quoteId] = true;
+  map[key] = true;
   setClosedMap(map);
 };
 
@@ -119,10 +117,19 @@ const formatDateShort = (value: string | null) => {
   });
 };
 
-/** Traveller-facing status label */
+const formatDateTime = (value: string | null) => {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+};
+
+/* Traveller-facing status label – kwa sasa enquiry zote ni “Pending” mpaka operator a-confirm, tutapanua baadaye */
 const getTravellerStatusLabel = (status?: string | null) => {
   const s = (status || "pending").toLowerCase();
-
   switch (s) {
     case "pending":
       return "Waiting for operator";
@@ -152,11 +159,12 @@ export default function TravellerQuotesPage() {
 
   const [travellerEmail, setTravellerEmail] = useState<string | null>(null);
 
-  const [quotes, setQuotes] = useState<QuoteRow[]>([]);
-  const [operators, setOperators] = useState<Record<string, string>>({});
-  const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(null);
+  const [enquiries, setEnquiries] = useState<EnquiryRow[]>([]);
+  const [selectedEnquiryId, setSelectedEnquiryId] = useState<number | null>(
+    null
+  );
 
-  const [replies, setReplies] = useState<ReplyRow[]>([]);
+  const [messages, setMessages] = useState<MessageRow[]>([]);
   const [newMessage, setNewMessage] = useState("");
 
   const [closedMapState, setClosedMapState] = useState<Record<string, boolean>>(
@@ -169,6 +177,7 @@ export default function TravellerQuotesPage() {
     setClosedMapState(getClosedMap());
   }, []);
 
+  /* ---------- Load enquiries for logged in traveller (from quote_requests) ---------- */
   useEffect(() => {
     let isMounted = true;
 
@@ -179,7 +188,7 @@ export default function TravellerQuotesPage() {
       try {
         const { data: userResp, error: userErr } = await supabase.auth.getUser();
         if (userErr || !userResp?.user) {
-          console.error("traveller quotes auth error:", userErr);
+          console.error("traveller enquiries auth error:", userErr);
           if (!isMounted) return;
           setErrorMsg("Please log in as a traveller.");
           setLoading(false);
@@ -199,69 +208,46 @@ export default function TravellerQuotesPage() {
         }
 
         if (!isMounted) return;
-
         setTravellerEmail(emailFromUser);
 
-        // load quotes
-        const { data: quoteRows, error: quoteErr } = await supabase
-          .from("operator_quotes")
-          .select("*")
+        // 🔽 Load enquiries from quote_requests filtered by traveller email
+        const { data: rows, error: qErr } = await supabase
+          .from("quote_requests")
+          .select(
+            "id, trip_id, trip_title, date, pax, name, email, phone, note, created_at"
+          )
           .eq("email", emailFromUser)
           .order("created_at", { ascending: false });
 
-        if (quoteErr) {
-          console.error("traveller quotes load error:", quoteErr);
+        if (qErr) {
+          console.error("traveller enquiries load error:", qErr);
           if (!isMounted) return;
-          setQuotes([]);
+          setEnquiries([]);
           setErrorMsg("Could not load your enquiries.");
           setLoading(false);
           return;
         }
 
-        const qRows = (quoteRows || []) as QuoteRow[];
+        const list = (rows || []) as EnquiryRow[];
 
         if (!isMounted) return;
-
-        setQuotes(qRows);
-
-        // operators
-        const operatorIds = Array.from(
-          new Set(qRows.map((q) => q.operator_id).filter(Boolean))
-        );
-        if (operatorIds.length > 0) {
-          const { data: opRows, error: opErr } = await supabase
-            .from("operators")
-            .select("id, name, company_name")
-            .in("id", operatorIds);
-
-          if (opErr) {
-            console.warn("traveller quotes operators error:", opErr);
-          } else {
-            const map: Record<string, string> = {};
-            (opRows || []).forEach((op) => {
-              const row = op as OperatorRow;
-              map[row.id] =
-                (row.company_name as string) ||
-                (row.name as string) ||
-                "Safari operator";
-            });
-            if (isMounted) setOperators(map);
-          }
-        }
+        setEnquiries(list);
 
         // pick initial selected
-        let initialId: string | null =
-          (searchParams && searchParams.get("quote_id")) || null;
-
-        if (!initialId && qRows.length > 0) {
-          initialId = qRows[0].id;
+        let initialId: number | null = null;
+        const paramQuote = searchParams?.get("enquiry_id");
+        if (paramQuote) {
+          const found = list.find((e) => String(e.id) === paramQuote);
+          if (found) initialId = found.id;
         }
-
-        if (initialId && isMounted) {
-          setSelectedQuoteId(initialId);
+        if (!initialId && list.length > 0) {
+          initialId = list[0].id;
+        }
+        if (initialId != null && isMounted) {
+          setSelectedEnquiryId(initialId);
         }
       } catch (err: any) {
-        console.error("traveller quotes exception:", err);
+        console.error("traveller enquiries exception:", err);
         if (isMounted) {
           setErrorMsg("Unexpected error while loading your enquiries.");
         }
@@ -277,13 +263,28 @@ export default function TravellerQuotesPage() {
     };
   }, [searchParams]);
 
-  // load messages when quote changes
+  const selectedEnquiry = useMemo(
+    () =>
+      selectedEnquiryId == null
+        ? null
+        : enquiries.find((e) => e.id === selectedEnquiryId) || null,
+    [enquiries, selectedEnquiryId]
+  );
+
+  const selectedKey =
+    selectedEnquiryId != null ? String(selectedEnquiryId) : null;
+
+  // Kwa sasa hatuna status column kwenye quote_requests – tunatumia local closed flag tu
+  const selectedIsClosed =
+    !!selectedKey && closedMapState[selectedKey] === true;
+
+  /* ---------- Load messages for selected enquiry from quote_request_messages ---------- */
   useEffect(() => {
     let isMounted = true;
 
     const loadMessages = async () => {
-      if (!selectedQuoteId) {
-        setReplies([]);
+      if (!selectedEnquiryId) {
+        setMessages([]);
         return;
       }
 
@@ -291,24 +292,24 @@ export default function TravellerQuotesPage() {
 
       try {
         const { data: rows, error } = await supabase
-          .from("operator_quote_replies")
-          .select("*")
-          .eq("quote_id", selectedQuoteId)
+          .from("quote_request_messages")
+          .select("id, quote_request_id, sender_role, message, created_at")
+          .eq("quote_request_id", selectedEnquiryId)
           .order("created_at", { ascending: true });
 
         if (error) {
-          console.error("traveller quotes replies error:", error);
+          console.error("traveller enquiries messages error:", error);
           if (!isMounted) return;
-          setReplies([]);
+          setMessages([]);
         } else {
           if (!isMounted) return;
-          setReplies((rows || []) as ReplyRow[]);
-          // mark as read once we’ve opened this thread
-          markQuoteSeen(selectedQuoteId);
+          setMessages((rows || []) as MessageRow[]);
+          // Mark as seen once thread is opened
+          markEnquirySeen(selectedEnquiryId);
         }
       } catch (err: any) {
-        console.error("traveller quotes replies exception:", err);
-        if (isMounted) setReplies([]);
+        console.error("traveller enquiries messages exception:", err);
+        if (isMounted) setMessages([]);
       } finally {
         if (isMounted) setLoadingMessages(false);
       }
@@ -319,79 +320,62 @@ export default function TravellerQuotesPage() {
     return () => {
       isMounted = false;
     };
-  }, [selectedQuoteId]);
+  }, [selectedEnquiryId]);
 
-  const selectedQuote = useMemo(
-    () => quotes.find((q) => q.id === selectedQuoteId) || null,
-    [quotes, selectedQuoteId]
-  );
+  /* ---------- Handlers ---------- */
 
-  const selectedOperatorName =
-    (selectedQuote && operators[selectedQuote.operator_id]) ||
-    "Safari operator";
-
-  const selectedStatusRaw = (selectedQuote?.status || "pending").toLowerCase();
-  const selectedIsClosed =
-    selectedStatusRaw === "archived" ||
-    selectedStatusRaw === "cancelled" ||
-    (!!selectedQuoteId && closedMapState[selectedQuoteId] === true);
-
-  const handleSelectQuote = (id: string) => {
-    setSelectedQuoteId(id);
+  const handleSelectEnquiry = (id: number) => {
+    setSelectedEnquiryId(id);
     const params = new URLSearchParams(searchParams?.toString() || "");
-    params.set("quote_id", id);
+    params.set("enquiry_id", String(id));
     router.replace(`/traveller/quotes?${params.toString()}`);
   };
 
   const handleSend = async () => {
-    if (!selectedQuoteId || !newMessage.trim() || selectedIsClosed) return;
+    if (!selectedEnquiryId || !newMessage.trim() || selectedIsClosed) return;
     const text = newMessage.trim();
     setNewMessage("");
 
     try {
       const { data, error } = await supabase
-        .from("operator_quote_replies")
+        .from("quote_request_messages")
         .insert({
-          quote_id: selectedQuoteId,
+          quote_request_id: selectedEnquiryId,
           sender_role: "traveller",
           message: text,
         })
-        .select("*")
+        .select("id, quote_request_id, sender_role, message, created_at")
         .single();
 
       if (error) {
-        console.error("traveller quotes send error:", error);
+        console.error("traveller send message error:", error);
         return;
       }
 
       if (data) {
-        setReplies((prev) => [...prev, data as ReplyRow]);
+        setMessages((prev) => [...prev, data as MessageRow]);
       }
     } catch (err: any) {
-      console.error("traveller quotes send exception:", err);
+      console.error("traveller send message exception:", err);
     }
   };
 
   const handleCloseChat = async () => {
-    if (!selectedQuoteId || !selectedQuote || selectedIsClosed) return;
+    if (!selectedEnquiryId || !selectedEnquiry || selectedIsClosed) return;
 
     setClosing(true);
     setErrorMsg(null);
 
     try {
       // Local-only close: mark in localStorage + state
-      markQuoteClosedLocal(selectedQuoteId);
-      setClosedMapState((prev) => ({ ...prev, [selectedQuoteId]: true }));
-
-      // Optionally, we also reflect it in local quotes state as "archived"
-      setQuotes((prev) =>
-        prev.map((q) =>
-          q.id === selectedQuoteId ? { ...q, status: "archived" } : q
-        )
-      );
+      markEnquiryClosedLocal(selectedEnquiryId);
+      setClosedMapState((prev) => ({
+        ...prev,
+        [String(selectedEnquiryId)]: true,
+      }));
 
       // Mark as seen so NEW badge ipotee
-      markQuoteSeen(selectedQuoteId);
+      markEnquirySeen(selectedEnquiryId);
     } catch (err: any) {
       console.error("traveller close chat local exception:", err);
       setErrorMsg("Unexpected error while closing this chat.");
@@ -399,6 +383,8 @@ export default function TravellerQuotesPage() {
       setClosing(false);
     }
   };
+
+  /* ---------- Render ---------- */
 
   return (
     <main
@@ -448,8 +434,8 @@ export default function TravellerQuotesPage() {
               color: "#4B5563",
             }}
           >
-            View the quotes you&apos;ve requested and chat with local operators
-            like WhatsApp, directly inside Safari Connector.
+            View the trips you&apos;ve enquired about and chat with our safari
+            experts directly inside Safari Connector.
           </p>
         </div>
 
@@ -545,7 +531,7 @@ export default function TravellerQuotesPage() {
             >
               Loading enquiries...
             </div>
-          ) : quotes.length === 0 ? (
+          ) : enquiries.length === 0 ? (
             <div
               style={{
                 marginTop: 10,
@@ -557,8 +543,8 @@ export default function TravellerQuotesPage() {
                 backgroundColor: "#F9FAFB",
               }}
             >
-              You haven&apos;t requested any quotes yet. When you send a
-              request, it will appear here.
+              You haven&apos;t requested any quotes yet. When you send a request
+              from a trip page, it will appear here.
             </div>
           ) : (
             <div
@@ -571,37 +557,38 @@ export default function TravellerQuotesPage() {
                 overflowY: "auto",
               }}
             >
-              {quotes.map((q) => {
-                const isActive = q.id === selectedQuoteId;
-                const opName = operators[q.operator_id] || "Safari operator";
+              {enquiries.map((q) => {
+                const isActive =
+                  selectedEnquiryId != null && q.id === selectedEnquiryId;
 
+                const key = String(q.id);
                 const unreadMap = getUnreadMap();
-                const lastSeen = unreadMap[q.id] || 0;
-                const hasUnread =
-                  selectedQuoteId === q.id &&
-                  replies.some((r) => {
-                    if ((r.sender_role || "operator") !== "operator") return false;
-                    const t = r.created_at
-                      ? new Date(r.created_at).getTime()
-                      : 0;
-                    return t > lastSeen;
-                  });
+                const lastSeen = unreadMap[key] || 0;
 
-                const statusRaw = (q.status || "pending").toLowerCase();
+                const hasUnread = messages.some((m) => {
+                  if ((m.sender_role || "").toLowerCase() !== "operator")
+                    return false;
+                  const t = m.created_at
+                    ? new Date(m.created_at).getTime()
+                    : 0;
+                  return t > lastSeen;
+                });
+
+                const statusRaw = hasUnread ? "answered" : "pending";
                 const statusBg =
-                  statusRaw === "answered" || statusRaw === "confirmed"
+                  statusRaw === "answered"
                     ? "#ECFDF5"
                     : statusRaw === "cancelled" || statusRaw === "archived"
                     ? "#FEE2E2"
                     : "#FEF3C7";
                 const statusColor =
-                  statusRaw === "answered" || statusRaw === "confirmed"
+                  statusRaw === "answered"
                     ? "#166534"
                     : statusRaw === "cancelled" || statusRaw === "archived"
                     ? "#B91C1C"
                     : "#92400E";
                 const statusBorder =
-                  statusRaw === "answered" || statusRaw === "confirmed"
+                  statusRaw === "answered"
                     ? "1px solid #BBF7D0"
                     : statusRaw === "cancelled" || statusRaw === "archived"
                     ? "1px solid #FCA5A5"
@@ -611,7 +598,7 @@ export default function TravellerQuotesPage() {
                   <button
                     key={q.id}
                     type="button"
-                    onClick={() => handleSelectQuote(q.id)}
+                    onClick={() => handleSelectEnquiry(q.id)}
                     style={{
                       textAlign: "left",
                       borderRadius: 18,
@@ -639,7 +626,7 @@ export default function TravellerQuotesPage() {
                             color: "#111827",
                           }}
                         >
-                          {opName}
+                          {q.trip_title || "Safari enquiry"}
                         </div>
                         <div
                           style={{
@@ -647,11 +634,9 @@ export default function TravellerQuotesPage() {
                             color: "#6B7280",
                           }}
                         >
-                          {q.travel_start_date && q.travel_end_date
-                            ? `${formatDate(q.travel_start_date)} – ${formatDate(
-                                q.travel_end_date
-                              )}`
-                            : "Travel dates not set"}
+                          {q.date
+                            ? `Preferred date: ${formatDate(q.date)}`
+                            : "Dates flexible"}
                         </div>
                         <div
                           style={{
@@ -660,8 +645,7 @@ export default function TravellerQuotesPage() {
                             color: "#6B7280",
                           }}
                         >
-                          Group size{" "}
-                          {q.group_size ? q.group_size : "not specified"}
+                          Travellers {q.pax ? q.pax : "not specified"}
                         </div>
                       </div>
                       <div
@@ -685,7 +669,7 @@ export default function TravellerQuotesPage() {
                               fontWeight: 600,
                             }}
                           >
-                            {getTravellerStatusLabel(q.status)}
+                            {getTravellerStatusLabel(statusRaw)}
                           </span>
                           {hasUnread && (
                             <span
@@ -732,7 +716,7 @@ export default function TravellerQuotesPage() {
             flexDirection: "column",
           }}
         >
-          {!selectedQuote ? (
+          {!selectedEnquiry ? (
             <div
               style={{
                 flex: 1,
@@ -743,7 +727,8 @@ export default function TravellerQuotesPage() {
                 color: "#6B7280",
               }}
             >
-              Select an enquiry on the left to see the chat with the operator.
+              Select an enquiry on the left to see the chat with our safari
+              experts.
             </div>
           ) : (
             <>
@@ -766,7 +751,7 @@ export default function TravellerQuotesPage() {
                       marginBottom: 2,
                     }}
                   >
-                    {selectedOperatorName}
+                    Safari Connector expert
                   </div>
                   <div
                     style={{
@@ -776,22 +761,9 @@ export default function TravellerQuotesPage() {
                     }}
                   >
                     Enquiry sent on{" "}
-                    {selectedQuote.created_at
-                      ? formatDateShort(selectedQuote.created_at)
+                    {selectedEnquiry.created_at
+                      ? formatDateTime(selectedEnquiry.created_at)
                       : "-"}
-                    {selectedQuote.status && (
-                      <>
-                        {" "}
-                        — status{" "}
-                        <span
-                          style={{
-                            fontWeight: 600,
-                          }}
-                        >
-                          {getTravellerStatusLabel(selectedQuote.status)}
-                        </span>
-                      </>
-                    )}
                   </div>
 
                   <div
@@ -811,15 +783,12 @@ export default function TravellerQuotesPage() {
                           color: "#9CA3AF",
                         }}
                       >
-                        Travel dates
+                        Preferred date
                       </div>
                       <div>
-                        {selectedQuote.travel_start_date &&
-                        selectedQuote.travel_end_date
-                          ? `${formatDate(
-                              selectedQuote.travel_start_date
-                            )} – ${formatDate(selectedQuote.travel_end_date)}`
-                          : "Not specified"}
+                        {selectedEnquiry.date
+                          ? formatDate(selectedEnquiry.date)
+                          : "Flexible"}
                       </div>
                     </div>
                     <div>
@@ -831,11 +800,11 @@ export default function TravellerQuotesPage() {
                           color: "#9CA3AF",
                         }}
                       >
-                        Group size
+                        Travellers
                       </div>
                       <div>
-                        {selectedQuote.group_size
-                          ? selectedQuote.group_size
+                        {selectedEnquiry.pax
+                          ? selectedEnquiry.pax
                           : "Not specified"}
                       </div>
                     </div>
@@ -900,7 +869,7 @@ export default function TravellerQuotesPage() {
                 }}
               >
                 {/* Original request block */}
-                {selectedQuote.message && (
+                {selectedEnquiry.note && (
                   <div
                     style={{
                       marginBottom: 10,
@@ -924,9 +893,10 @@ export default function TravellerQuotesPage() {
                         fontSize: 13,
                         lineHeight: 1.5,
                         border: "1px solid #A7F3D0",
+                        whiteSpace: "pre-line",
                       }}
                     >
-                      {selectedQuote.message}
+                      {selectedEnquiry.note}
                     </div>
                   </div>
                 )}
@@ -941,7 +911,7 @@ export default function TravellerQuotesPage() {
                   >
                     Loading messages...
                   </div>
-                ) : replies.length === 0 ? (
+                ) : messages.length === 0 ? (
                   <div
                     style={{
                       marginTop: 10,
@@ -949,13 +919,14 @@ export default function TravellerQuotesPage() {
                       color: "#6B7280",
                     }}
                   >
-                    No messages yet. When the operator replies, the chat will
-                    appear here.
+                    No messages yet. When our safari experts reply, the chat
+                    will appear here.
                   </div>
                 ) : (
-                  replies.map((r) => {
+                  messages.map((r) => {
                     const isTraveller =
-                      (r.sender_role || "traveller") === "traveller";
+                      (r.sender_role || "traveller").toLowerCase() ===
+                      "traveller";
 
                     return (
                       <div
@@ -991,7 +962,7 @@ export default function TravellerQuotesPage() {
                               color: "#6B7280",
                             }}
                           >
-                            {isTraveller ? "You" : selectedOperatorName}
+                            {isTraveller ? "You" : "Safari Connector expert"}
                           </div>
                           <div>{r.message}</div>
                           {r.created_at && (
@@ -1003,7 +974,7 @@ export default function TravellerQuotesPage() {
                                 textAlign: "right",
                               }}
                             >
-                              {formatDateShort(r.created_at)}
+                              {formatDateTime(r.created_at)}
                             </div>
                           )}
                         </div>
@@ -1056,15 +1027,18 @@ export default function TravellerQuotesPage() {
                   <button
                     type="button"
                     onClick={handleSend}
+                    disabled={!newMessage.trim()}
                     style={{
                       borderRadius: 999,
                       padding: "8px 16px",
-                      backgroundColor: "#14532D",
+                      backgroundColor: newMessage.trim()
+                        ? "#14532D"
+                        : "#9CA3AF",
                       color: "#FFFFFF",
                       fontSize: 13,
                       fontWeight: 600,
                       border: "none",
-                      cursor: "pointer",
+                      cursor: newMessage.trim() ? "pointer" : "not-allowed",
                     }}
                   >
                     Send

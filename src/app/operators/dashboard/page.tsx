@@ -18,6 +18,7 @@ type OperatorRow = {
   location?: string | null;
   city?: string | null;
   country?: string | null;
+  status?: string | null; // pending / approved / live / not_listed...
   [key: string]: any;
 };
 
@@ -32,6 +33,12 @@ type QuoteRow = {
   id: string;
   operator_id: string;
   status?: string | null; // pending / answered / archived
+};
+
+type ManualQuoteRequestRow = {
+  id: string;
+  operator_id?: string | null;
+  status?: string | null; // kwa sasa hatutumii, zote tunazichukulia kama pending
 };
 
 type ReplySummaryRow = {
@@ -128,8 +135,8 @@ export default function OperatorDashboardPage() {
 
   const [operator, setOperator] = useState<OperatorRow | null>(null);
   const [activeTripsCount, setActiveTripsCount] = useState<number>(0);
-  const [pendingQuotesCount, setPendingQuotesCount] = useState<number>(0);
-  const [totalQuotesCount, setTotalQuotesCount] = useState<number>(0);
+  const [pendingQuotesCount, setPendingQuotesCount] = useState<number>(0); // AI + manual
+  const [totalQuotesCount, setTotalQuotesCount] = useState<number>(0); // AI + manual
 
   const [messageThreadsCount, setMessageThreadsCount] = useState<number>(0);
   const [messageNewCount, setMessageNewCount] = useState<number>(0);
@@ -215,8 +222,8 @@ export default function OperatorDashboardPage() {
         if (!isMounted) return;
         setOperator(operatorRow);
 
-        // 3) Load trips, quotes & message summary in parallel
-        const [tripsRes, quotesRes] = await Promise.all([
+        // 3) Load trips + AI quotes + manual requests in parallel
+        const [tripsRes, quotesRes, manualRes] = await Promise.all([
           supabase
             .from("trips")
             .select("id, status, is_published")
@@ -224,6 +231,10 @@ export default function OperatorDashboardPage() {
           supabase
             .from("operator_quotes")
             .select("id, status, travel_start_date, created_at")
+            .eq("operator_id", operatorId),
+          supabase
+            .from("quote_requests")
+            .select("id, operator_id")
             .eq("operator_id", operatorId),
         ]);
 
@@ -236,12 +247,22 @@ export default function OperatorDashboardPage() {
           if (isMounted) setActiveTripsCount(activeCount);
         }
 
-        /* Quotes summary + messages */
+        /* Manual quote_requests (from trip pages) */
+        let manualRequestsCount = 0;
+        if (manualRes.error) {
+          console.warn("operator dashboard manual quote_requests error:", manualRes.error);
+        } else {
+          const manualRows = (manualRes.data || []) as ManualQuoteRequestRow[];
+          manualRequestsCount = manualRows.length;
+        }
+
+        /* Quotes summary + messages (AI pipeline) */
         if (quotesRes.error) {
           console.warn("operator dashboard quotes error:", quotesRes.error);
           if (isMounted) {
-            setPendingQuotesCount(0);
-            setTotalQuotesCount(0);
+            // hata kama AI quotes zimefail, bado tunaweza kuonyesha manual count
+            setPendingQuotesCount(manualRequestsCount);
+            setTotalQuotesCount(manualRequestsCount);
             setMessageThreads([]);
             setMessageThreadsCount(0);
             setMessageNewCount(0);
@@ -252,17 +273,20 @@ export default function OperatorDashboardPage() {
             created_at?: string | null;
           })[];
 
-          const pending = quotes.filter(
+          const pendingAI = quotes.filter(
             (q) => !q.status || q.status === "pending"
           ).length;
-          const total = quotes.length;
+          const totalAI = quotes.length;
+
+          const combinedPending = pendingAI + manualRequestsCount;
+          const combinedTotal = totalAI + manualRequestsCount;
 
           if (isMounted) {
-            setPendingQuotesCount(pending);
-            setTotalQuotesCount(total);
+            setPendingQuotesCount(combinedPending);
+            setTotalQuotesCount(combinedTotal);
           }
 
-          // 4) Messages summary: latest reply per quote, check who sent last
+          // 4) Messages summary (AI quotes only – manual enquiries bado hazina chat)
           const quoteIds = quotes.map((q) => q.id);
           if (quoteIds.length > 0) {
             const { data: repliesRows, error: repliesErr } = await supabase
@@ -378,7 +402,15 @@ export default function OperatorDashboardPage() {
     (operator?.operator_email as string) ||
     "";
 
-  const profileStatusLabel = "Live";
+  const rawStatus = (operator?.status as string) || "pending";
+  const isApproved = rawStatus === "approved" || rawStatus === "live";
+
+  const profileStatusLabel =
+    rawStatus === "approved" || rawStatus === "live"
+      ? "Live"
+      : rawStatus === "pending"
+      ? "Pending approval"
+      : "Not listed";
 
   /* ---------- Render ---------- */
 
@@ -458,7 +490,7 @@ export default function OperatorDashboardPage() {
         </div>
       )}
 
-      {/* Top summary cards: Trips / Quotes / Messages / Profile */}
+      {/* Top summary cards: Trips / Quote Requests (AI + manual) / Messages / Profile */}
       <section
         style={{
           display: "grid",
@@ -525,7 +557,7 @@ export default function OperatorDashboardPage() {
           </div>
         </div>
 
-        {/* Quote Requests */}
+        {/* Quote Requests (AI + Manual combined) */}
         <div
           style={{
             borderRadius: 20,
@@ -551,7 +583,7 @@ export default function OperatorDashboardPage() {
               color: "#6B7280",
             }}
           >
-            New enquiries waiting for your reply.
+            All enquiries from AI itineraries and manual trip pages.
           </p>
           <div
             style={{
@@ -567,8 +599,23 @@ export default function OperatorDashboardPage() {
             style={{
               marginTop: 8,
               fontSize: 13,
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
             }}
           >
+            {/* Manual enquiries list */}
+            <Link
+              href="/operators/enquiries"
+              style={{
+                color: "#14532D",
+                textDecoration: "none",
+                fontWeight: 600,
+              }}
+            >
+              Traveller enquiries →
+            </Link>
+            {/* AI quote threads */}
             <Link
               href="/operators/quotes"
               style={{
@@ -577,12 +624,12 @@ export default function OperatorDashboardPage() {
                 fontWeight: 600,
               }}
             >
-              View requests →
+              AI quotes & chats →
             </Link>
           </div>
         </div>
 
-        {/* Messages TAB */}
+        {/* Messages (AI chat only) */}
         <div
           style={{
             borderRadius: 20,
@@ -698,7 +745,12 @@ export default function OperatorDashboardPage() {
             style={{
               marginTop: 10,
               fontSize: 13,
-              color: "#166534",
+              color:
+                profileStatusLabel === "Live"
+                  ? "#166534"
+                  : profileStatusLabel === "Pending approval"
+                  ? "#92400E"
+                  : "#B91C1C",
               fontWeight: 600,
             }}
           >
@@ -864,29 +916,35 @@ export default function OperatorDashboardPage() {
               marginTop: 14,
             }}
           >
-            <Link
-              href="/operators/trips/new"
+            <button
+              type="button"
+              onClick={() => {
+                if (isApproved) router.push("/operators/trips");
+              }}
+              disabled={!isApproved}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
                 padding: "9px 18px",
                 borderRadius: 999,
-                backgroundColor: "#0B6B3A",
+                backgroundColor: isApproved ? "#0B6B3A" : "#D1D5DB",
                 color: "#FFFFFF",
                 fontSize: 13,
                 fontWeight: 600,
                 textDecoration: "none",
-                boxShadow: "0 1px 2px rgba(0,0,0,0.15)",
+                boxShadow: isApproved ? "0 1px 2px rgba(0,0,0,0.15)" : "none",
+                border: "none",
+                cursor: isApproved ? "pointer" : "not-allowed",
               }}
             >
-              Add a new trip →
-            </Link>
+              {isApproved ? "Add a new trip →" : "Awaiting approval"}
+            </button>
           </div>
         </div>
       </section>
 
-      {/* Messages popup (unread only) */}
+      {/* Messages popup (unread only, AI quotes) */}
       {showMessagesPopup && (
         <div
           style={{

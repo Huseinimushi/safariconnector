@@ -42,22 +42,31 @@ const isRemoteUrl = (src: string | null | undefined) =>
 export default async function HomePage() {
   const supabase = supabaseServer();
 
-  // Pull data
-  const [tripsRes, opsRes] = await Promise.all([
+  // Pull data (trips, top approved operators, total approved operators count)
+  const [tripsRes, opsRes, opsCountRes] = await Promise.all([
     supabase
       .from("trips_view")
-      .select("id,title,duration,parks,price_from,price_to,hero_url,created_at")
+      .select(
+        "id,title,duration,parks,price_from,price_to,hero_url,created_at"
+      )
       .order("created_at", { ascending: false })
       .limit(12),
     supabase
       .from("operators")
       .select("id, company_name, country, location, status")
+      .in("status", ["approved", "live"])
       .order("company_name", { ascending: true })
       .limit(6),
+    supabase
+      .from("operators")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["approved", "live"]),
   ]);
 
   const trips: TripRow[] = tripsRes.data ?? [];
   const operators: OperatorRow[] = opsRes.data ?? [];
+  const approvedOperatorsCount: number =
+    (opsCountRes as any)?.count ?? operators.length;
 
   // Popular destinations from real parks
   const destMap = new Map<string, number>();
@@ -73,10 +82,10 @@ export default async function HomePage() {
     .slice(0, 6)
     .map(([name]) => name);
 
-  // Stats
+  // Stats (ONLY approved/live operators)
   const stats = {
     trips: trips.length,
-    operators: operators.length,
+    operators: approvedOperatorsCount,
     parks: destMap.size,
   };
 
@@ -687,19 +696,16 @@ function DestinationCard({ name, img }: { name: string; img?: string }) {
 }
 
 function OperatorCard({ op }: { op: OperatorRow }) {
-  const statusLabel =
-    (op.status || "").toLowerCase() === "approved"
-      ? "Approved operator"
-      : (op.status || "Pending").toString();
+  const isApproved =
+    (op.status || "").toLowerCase() === "approved" ||
+    (op.status || "").toLowerCase() === "live";
 
-  const statusColor =
-    (op.status || "").toLowerCase() === "approved"
-      ? "#166534"
-      : "#92400E";
-  const statusBg =
-    (op.status || "").toLowerCase() === "approved"
-      ? "#ECFDF3"
-      : "#FEF3C7";
+  const statusLabel = isApproved
+    ? "Approved operator"
+    : (op.status || "Pending").toString();
+
+  const statusColor = isApproved ? "#166534" : "#92400E";
+  const statusBg = isApproved ? "#ECFDF3" : "#FEF3C7";
 
   return (
     <Link

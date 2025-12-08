@@ -1,233 +1,211 @@
 "use client";
 
-import React, { useState, CSSProperties, FormEvent } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-const BRAND = {
-  ink: "#0E2430",
-  primary: "#1B4D3E",
-  sand: "#F4F3ED",
-  border: "#E1E5ED",
-};
-
-const pageWrapper: CSSProperties = {
-  minHeight: "100vh",
-  backgroundColor: BRAND.sand,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  padding: "40px 16px",
-};
-
-const cardStyle: CSSProperties = {
-  width: "100%",
-  maxWidth: 420,
-  backgroundColor: "#ffffff",
-  borderRadius: 24,
-  padding: "28px 24px 24px",
-  boxShadow: "0 18px 45px rgba(15, 23, 42, 0.12)",
-  border: `1px solid ${BRAND.border}`,
-};
+const BG_SAND = "#F4F3ED";
+const BRAND_GREEN = "#0B6B3A";
 
 export default function AdminLoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+
+  const [email, setEmail] = useState("admin@safariconnector.com");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const handleSubmit = async (e: FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    setErrorMsg(null);
+
+    if (!email || !password) {
+      setErrorMsg("Please enter email and password.");
+      return;
+    }
+
     setLoading(true);
-
     try {
-      // 1) Sign in with Supabase auth
-      const { data, error: signInError } =
-        await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
+      // 1. Sign in normally
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-      if (signInError) {
-        throw signInError;
+      if (error || !data?.user) {
+        console.error("admin login error:", error);
+        setErrorMsg("Invalid email or password.");
+        setLoading(false);
+        return;
       }
 
       const user = data.user;
-      if (!user) {
-        throw new Error("Could not load user after login.");
-      }
+      const userEmail = (user.email || "").toLowerCase();
 
-      // 2) Check profile role = 'admin'
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
+      // 🔥 SIMPLE RULE: ONLY THIS EMAIL IS ADMIN
+      const isAdminEmail = userEmail === "admin@safariconnector.com";
 
-      if (profileError) {
-        console.error("profile error:", profileError);
-        throw new Error("Unable to verify admin role.");
-      }
-
-      if (!profile || (profile.role || "").toLowerCase() !== "admin") {
-        // not admin → logout immediately
+      if (!isAdminEmail) {
+        // sio admin → signOut na ujumbe
         await supabase.auth.signOut();
-        throw new Error(
+        setErrorMsg(
           "This account is not allowed to access the admin panel."
         );
+        setLoading(false);
+        return;
       }
 
-      // 3) OK → redirect to admin dashboard
-      router.push("/admin");
+      // 2. Admin confirmed → redirect to admin dashboard
+      router.replace("/admin");
     } catch (err: any) {
-      console.error("admin login error:", err);
-      setError(
-        err?.message ||
-          "Failed to sign in. Please check your credentials and try again."
-      );
+      console.error(err);
+      setErrorMsg("Unexpected error during login.");
+    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={pageWrapper}>
-      <div style={cardStyle}>
-        <p
-          style={{
-            fontSize: 12,
-            letterSpacing: "0.22em",
-            textTransform: "uppercase",
-            color: "#6b7280",
-            marginBottom: 6,
-          }}
-        >
-          Safari Connector
-        </p>
+    <main
+      style={{
+        minHeight: "100vh",
+        backgroundColor: BG_SAND,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "32px 16px",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 420,
+          backgroundColor: "#FFFFFF",
+          borderRadius: 20,
+          border: "1px solid #E5E7EB",
+          padding: "24px 22px 26px",
+          boxShadow: "0 18px 40px rgba(15, 23, 42, 0.12)",
+        }}
+      >
         <h1
           style={{
-            fontSize: "1.8rem",
-            lineHeight: 1.1,
-            fontWeight: 600,
-            color: BRAND.primary,
-            marginBottom: 8,
+            margin: 0,
+            fontSize: 22,
+            fontWeight: 800,
+            color: BRAND_GREEN,
           }}
         >
           Admin sign in
         </h1>
         <p
           style={{
+            margin: 0,
+            marginTop: 6,
             fontSize: 13,
-            color: "#4b5563",
-            marginBottom: 18,
+            color: "#6B7280",
           }}
         >
-          This area is for Safari Connector admins only. Use your admin email
-          and password to access the control center.
+          Use your Safari Connector admin credentials to access the control
+          center.
         </p>
 
-        {error && (
+        {errorMsg && (
           <div
             style={{
-              marginBottom: 12,
+              marginTop: 14,
+              marginBottom: 10,
               padding: "8px 10px",
-              borderRadius: 12,
-              backgroundColor: "#fef2f2",
-              border: "1px solid #fecaca",
-              color: "#b91c1c",
-              fontSize: 12,
+              borderRadius: 10,
+              fontSize: 13,
+              backgroundColor: errorMsg.includes("not allowed")
+                ? "#FEF3C7"
+                : "#FEE2E2",
+              color: errorMsg.includes("not allowed")
+                ? "#92400E"
+                : "#B91C1C",
+              border: "1px solid #FCD34D",
             }}
           >
-            {error}
+            {errorMsg}
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
-          <label
-            style={{
-              display: "block",
-              fontSize: 13,
-              fontWeight: 500,
-              color: BRAND.ink,
-              marginBottom: 4,
-            }}
-          >
-            Admin email
-          </label>
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="admin@safariconnector.com"
-            style={{
-              width: "100%",
-              padding: "9px 10px",
-              borderRadius: 10,
-              border: `1px solid ${BRAND.border}`,
-              fontSize: 13,
-              marginBottom: 12,
-            }}
-          />
+        <form
+          onSubmit={handleSubmit}
+          style={{ marginTop: 18, display: "grid", gap: 12 }}
+        >
+          <div>
+            <label
+              style={{
+                display: "block",
+                fontSize: 12,
+                fontWeight: 600,
+                color: "#374151",
+                marginBottom: 4,
+              }}
+            >
+              Email
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={inputStyle}
+              placeholder="admin@safariconnector.com"
+            />
+          </div>
 
-          <label
-            style={{
-              display: "block",
-              fontSize: 13,
-              fontWeight: 500,
-              color: BRAND.ink,
-              marginBottom: 4,
-            }}
-          >
-            Password
-          </label>
-          <input
-            type="password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "9px 10px",
-              borderRadius: 10,
-              border: `1px solid ${BRAND.border}`,
-              fontSize: 13,
-              marginBottom: 16,
-            }}
-          />
+          <div>
+            <label
+              style={{
+                display: "block",
+                fontSize: 12,
+                fontWeight: 600,
+                color: "#374151",
+                marginBottom: 4,
+              }}
+            >
+              Password
+            </label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={inputStyle}
+              placeholder="••••••••"
+            />
+          </div>
 
           <button
             type="submit"
             disabled={loading}
             style={{
+              marginTop: 8,
               width: "100%",
-              padding: "10px 12px",
+              padding: "10px 14px",
               borderRadius: 999,
               border: "none",
-              backgroundColor: loading ? "#9ca3af" : BRAND.primary,
-              color: "#ffffff",
+              backgroundColor: "#FCD34D",
+              color: "#111827",
               fontSize: 14,
-              fontWeight: 500,
-              cursor: loading ? "not-allowed" : "pointer",
-              marginBottom: 8,
+              fontWeight: 700,
+              cursor: loading ? "default" : "pointer",
+              opacity: loading ? 0.7 : 1,
             }}
           >
             {loading ? "Signing in…" : "Sign in as admin"}
           </button>
         </form>
-
-        <p
-          style={{
-            fontSize: 11,
-            color: "#9ca3af",
-            marginTop: 10,
-          }}
-        >
-          If you&apos;re an operator or traveller, please use the normal login
-          pages on Safari Connector instead.
-        </p>
       </div>
-    </div>
+    </main>
   );
 }
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "8px 10px",
+  borderRadius: 8,
+  border: "1px solid #D1D5DB",
+  backgroundColor: "#F9FAFB",
+  fontSize: 14,
+};
