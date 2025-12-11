@@ -93,9 +93,25 @@ const formatDateShort = (value: string | null) => {
   });
 };
 
+/** (Still here though hatuitumii tena kwenye badge ya list) */
 const formatStatus = (status?: string | null) => {
-  const s = status || "pending";
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  const s = (status || "pending").toLowerCase();
+
+  switch (s) {
+    case "pending":
+      return "Pending";
+    case "answered":
+      return "Operator replied";
+    case "booking_created":
+    case "booked":
+      return "Booking in progress";
+    case "confirmed":
+      return "Booking confirmed";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return s.charAt(0).toUpperCase() + s.slice(1);
+  }
 };
 
 /* ---------- Component ---------- */
@@ -110,7 +126,9 @@ export default function TravellerDashboardPage() {
   const [travellerEmail, setTravellerEmail] = useState<string | null>(null);
 
   const [quotes, setQuotes] = useState<QuoteRow[]>([]);
-  const [operatorNames, setOperatorNames] = useState<Record<string, string>>({});
+  const [operatorNames, setOperatorNames] = useState<Record<string, string>>(
+    {}
+  );
 
   const [totalEnquiries, setTotalEnquiries] = useState<number>(0);
   const [lastEnquiryDate, setLastEnquiryDate] = useState<string | null>(null);
@@ -416,6 +434,23 @@ export default function TravellerDashboardPage() {
             }}
           >
             View my enquiries
+          </Link>
+
+          {/* NEW: direct link to bookings */}
+          <Link
+            href="/traveller/bookings"
+            style={{
+              borderRadius: 999,
+              padding: "7px 14px",
+              border: "1px solid #D1D5DB",
+              backgroundColor: "#FFFFFF",
+              color: "#14532D",
+              fontSize: 12,
+              fontWeight: 600,
+              textDecoration: "none",
+            }}
+          >
+            View my bookings
           </Link>
 
           {/* Logout */}
@@ -776,8 +811,7 @@ export default function TravellerDashboardPage() {
                               color: "#111827",
                             }}
                           >
-                            Safari enquiry (
-                            {formatDate(q.travel_start_date)})
+                            Safari enquiry ({formatDate(q.travel_start_date)})
                           </div>
                           <div
                             style={{
@@ -794,9 +828,7 @@ export default function TravellerDashboardPage() {
                             color: "#6B7280",
                           }}
                         >
-                          {q.created_at
-                            ? formatDateShort(q.created_at)
-                            : ""}
+                          {q.created_at ? formatDateShort(q.created_at) : ""}
                         </div>
                       </div>
                       <div
@@ -808,26 +840,18 @@ export default function TravellerDashboardPage() {
                           fontSize: 11,
                         }}
                       >
+                        {/* BADGE: sasa inaonyesha “Bookings” badala ya Pending/Answered */}
                         <span
                           style={{
                             padding: "2px 7px",
                             borderRadius: 999,
-                            backgroundColor:
-                              (q.status || "pending") === "answered"
-                                ? "#ECFDF5"
-                                : "#FEF3C7",
-                            color:
-                              (q.status || "pending") === "answered"
-                                ? "#166534"
-                                : "#92400E",
-                            border:
-                              (q.status || "pending") === "answered"
-                                ? "1px solid #BBF7D0"
-                                : "1px solid #FDE68A",
+                            backgroundColor: "#ECFDF5",
+                            color: "#166534",
+                            border: "1px solid #BBF7D0",
                             fontWeight: 600,
                           }}
                         >
-                          {formatStatus(q.status)}
+                          Bookings
                         </span>
                         <span
                           style={{
@@ -1001,8 +1025,7 @@ export default function TravellerDashboardPage() {
                                 color: "#111827",
                               }}
                             >
-                              Safari enquiry (
-                              {formatDate(t.travel_start_date)})
+                              Safari enquiry ({formatDate(t.travel_start_date)})
                             </div>
                             <div
                               style={{
