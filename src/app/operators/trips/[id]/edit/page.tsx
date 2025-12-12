@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseClient";
 
 type OperatorRow = {
@@ -54,14 +54,11 @@ const RED = "#B91C1C";
 const toLines = (arr: string[] | null | undefined) => (arr ?? []).join("\n");
 const fromCsv = (parks: string[] | null) => (parks ?? []).join(", ");
 
-export default function EditTripPage({
-  params,
-}: {
-  params: { id: string };
-}) {
+export default function EditTripPage() {
   const router = useRouter();
-  const supabase = supabaseBrowser; // tayari ni client
-  const tripId = params.id;
+  const params = useParams<{ id: string }>();
+  const supabase = supabaseBrowser;
+  const tripId = (params?.id as string) || "";
 
   const [operator, setOperator] = useState<OperatorRow | null>(null);
   const [form, setForm] = useState<TripForm | null>(null);
@@ -73,6 +70,8 @@ export default function EditTripPage({
   /* ───────── Load trip + operator + days ───────── */
   useEffect(() => {
     if (!tripId) return;
+
+    let isMounted = true;
 
     (async () => {
       setLoading(true);
@@ -96,11 +95,13 @@ export default function EditTripPage({
         .maybeSingle();
 
       if (opError || !op) {
+        if (!isMounted) return;
         setMsg("❌ You must have an operator profile to edit trips.");
         setLoading(false);
         return;
       }
 
+      if (!isMounted) return;
       setOperator(op as OperatorRow);
 
       // Trip must belong to this operator
@@ -110,10 +111,11 @@ export default function EditTripPage({
           "id,title,duration,style,parks,price_from,price_to,overview,description,highlights,includes,excludes,images,hero_url,operator_id"
         )
         .eq("id", tripId)
-        .eq("operator_id", op.id)
+        .eq("operator_id", (op as any).id)
         .maybeSingle();
 
       if (tripError || !trip) {
+        if (!isMounted) return;
         setMsg("❌ Trip not found or not owned by your operator.");
         setLoading(false);
         return;
@@ -134,8 +136,8 @@ export default function EditTripPage({
         duration: t.duration ? String(t.duration) : "",
         style: (t.style ?? "balanced") as TripForm["style"],
         parksCsv: fromCsv(t.parks),
-        priceFrom: t.price_from ? String(t.price_from) : "",
-        priceTo: t.price_to ? String(t.price_to) : "",
+        priceFrom: t.price_from != null ? String(t.price_from) : "",
+        priceTo: t.price_to != null ? String(t.price_to) : "",
         overview: t.overview ?? "",
         description: t.description ?? "",
         highlightsText: toLines(t.highlights),
@@ -147,6 +149,7 @@ export default function EditTripPage({
         extra3: ex3,
       };
 
+      if (!isMounted) return;
       setForm(initialForm);
 
       // Load trip_days
@@ -160,6 +163,7 @@ export default function EditTripPage({
         console.error("trip_days load error:", dayErr);
       }
 
+      if (!isMounted) return;
       setDays(
         (dayRows || []).map((d: any) => ({
           id: d.id,
@@ -170,6 +174,10 @@ export default function EditTripPage({
 
       setLoading(false);
     })();
+
+    return () => {
+      isMounted = false;
+    };
   }, [router, supabase, tripId]);
 
   /* ───────── Helpers ───────── */
@@ -260,7 +268,6 @@ export default function EditTripPage({
         }))
         .filter((d) => d.title || d.desc);
 
-      // Delete existing days then insert new ones
       const { error: delErr } = await supabase
         .from("trip_days")
         .delete()
@@ -278,9 +285,7 @@ export default function EditTripPage({
           desc: d.desc || null,
         }));
 
-        const { error: insErr } = await supabase
-          .from("trip_days")
-          .insert(rows);
+        const { error: insErr } = await supabase.from("trip_days").insert(rows);
 
         if (insErr) {
           console.error("trip_days insert error:", insErr);
@@ -309,7 +314,6 @@ export default function EditTripPage({
     setMsg(null);
 
     try {
-      // Delete days first
       await supabase.from("trip_days").delete().eq("trip_id", tripId);
 
       const { error } = await supabase
@@ -595,9 +599,7 @@ export default function EditTripPage({
                   <label style={labelStyle}>Trip highlights</label>
                   <textarea
                     value={form.highlightsText}
-                    onChange={(e) =>
-                      onChange("highlightsText", e.target.value)
-                    }
+                    onChange={(e) => onChange("highlightsText", e.target.value)}
                     rows={5}
                     style={textareaStyle}
                   />
@@ -606,9 +608,7 @@ export default function EditTripPage({
                   <label style={labelStyle}>Included</label>
                   <textarea
                     value={form.includesText}
-                    onChange={(e) =>
-                      onChange("includesText", e.target.value)
-                    }
+                    onChange={(e) => onChange("includesText", e.target.value)}
                     rows={5}
                     style={textareaStyle}
                   />
@@ -617,9 +617,7 @@ export default function EditTripPage({
                   <label style={labelStyle}>Excluded</label>
                   <textarea
                     value={form.excludesText}
-                    onChange={(e) =>
-                      onChange("excludesText", e.target.value)
-                    }
+                    onChange={(e) => onChange("excludesText", e.target.value)}
                     rows={5}
                     style={textareaStyle}
                   />
@@ -667,17 +665,13 @@ export default function EditTripPage({
                     <input
                       style={{ ...inputStyle, marginBottom: 4 }}
                       value={d.title}
-                      onChange={(e) =>
-                        updateDay(idx, "title", e.target.value)
-                      }
+                      onChange={(e) => updateDay(idx, "title", e.target.value)}
                     />
                     <textarea
                       rows={3}
                       style={textareaStyle}
                       value={d.desc}
-                      onChange={(e) =>
-                        updateDay(idx, "desc", e.target.value)
-                      }
+                      onChange={(e) => updateDay(idx, "desc", e.target.value)}
                     />
                   </div>
                 ))}
@@ -786,7 +780,7 @@ const h2Style: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
   width: "100%",
   borderRadius: 10,
-  border: "1px solid "#D1D5DB",
+  border: "1px solid #D1D5DB",
   padding: "6px 9px",
   fontSize: 13,
   outline: "none",

@@ -18,7 +18,7 @@ type OperatorRow = {
   country: string | null;
   location: string | null;
   status: string | null;
-  // slug: string | null; // unaweza kuongeza ukitaka, sio lazima kwa sasa
+  // slug: string | null;
 };
 
 // Helper ya kutengeneza slug kutoka kwenye company name
@@ -26,8 +26,8 @@ function slugify(raw: string): string {
   return raw
     .toLowerCase()
     .trim()
-    .replace(/[^a-z0-9]+/g, "-") // badilisha spaces & symbols → dash
-    .replace(/^-+|-+$/g, ""); // toa dash za mwanzo/mwisho
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 export default function OperatorRegisterPage() {
@@ -46,7 +46,11 @@ export default function OperatorRegisterPage() {
   const [location, setLocation] = useState("");
 
   useEffect(() => {
+    let isMounted = true;
+
     const load = async () => {
+      if (!isMounted) return;
+
       setLoading(true);
       setMsg(null);
 
@@ -58,21 +62,22 @@ export default function OperatorRegisterPage() {
 
       if (userError) {
         console.error("auth error:", userError);
-        setMsg("❌ Failed to check login. Please log in as an operator.");
-        setLoading(false);
+        if (isMounted) {
+          setMsg("❌ Failed to check login. Please log in as an operator.");
+          setLoading(false);
+        }
         return;
       }
 
       if (!user) {
-        // Kama hana account / haja-login → peleka login
         router.replace("/operators/login");
         return;
       }
 
       // 2. Cheki kama tayari ana operator profile
-      const { data: op, error: opError } = await supabase
+      const { data: opData, error: opError } = await supabase
         .from("operators")
-        .select<OperatorRow>(
+        .select(
           "id, name, company_name, contact_person, email, country, location, status"
         )
         .eq("user_id", user.id)
@@ -80,45 +85,57 @@ export default function OperatorRegisterPage() {
 
       if (opError) {
         console.error("operator load error:", opError);
-        setMsg(
-          "⚠ Could not check existing operator profile. You can still create one."
-        );
-        setEmail(user.email || "");
-        setLoading(false);
+        if (isMounted) {
+          setMsg(
+            "⚠ Could not check existing operator profile. You can still create one."
+          );
+          setEmail(user.email || "");
+          setLoading(false);
+        }
         return;
       }
 
+      const op = (opData || null) as OperatorRow | null;
+
       if (op) {
         // Existing profile → edit
-        setOperatorId(op.id);
-        setCompanyName(op.company_name || op.name || "");
-        setContactPerson(op.contact_person || "");
-        setEmail(op.email || user.email || "");
-        setCountry(op.country || "");
-        setLocation(op.location || "");
+        if (isMounted) {
+          setOperatorId(op.id);
+          setCompanyName(op.company_name || op.name || "");
+          setContactPerson(op.contact_person || "");
+          setEmail(op.email || user.email || "");
+          setCountry(op.country || "");
+          setLocation(op.location || "");
 
-        const statusLabel =
-          !op.status || op.status === "pending"
-            ? "pending admin approval"
-            : op.status === "approved"
-            ? "approved"
-            : "not listed";
+          const statusLabel =
+            !op.status || op.status === "pending"
+              ? "pending admin approval"
+              : op.status === "approved"
+              ? "approved"
+              : "not listed";
 
-        setMsg(
-          `ℹ You already have an operator profile (${statusLabel}). You can update the details below.`
-        );
+          setMsg(
+            `ℹ You already have an operator profile (${statusLabel}). You can update the details below.`
+          );
+        }
       } else {
         // New profile
-        setEmail(user.email || "");
-        setMsg(
-          "ℹ Create your operator profile. After approval you’ll be able to post trips."
-        );
+        if (isMounted) {
+          setEmail(user.email || "");
+          setMsg(
+            "ℹ Create your operator profile. After approval you’ll be able to post trips."
+          );
+        }
       }
 
-      setLoading(false);
+      if (isMounted) setLoading(false);
     };
 
     load();
+
+    return () => {
+      isMounted = false;
+    };
   }, [router]);
 
   const handleSave = async () => {
@@ -157,15 +174,12 @@ export default function OperatorRegisterPage() {
             email,
             country,
             location,
-            slug, // weka slug pia kwenye update
+            slug,
           })
           .eq("id", operatorId);
 
         if (error) {
-          console.error(
-            "operator update error:",
-            JSON.stringify(error, null, 2)
-          );
+          console.error("operator update error:", JSON.stringify(error, null, 2));
           setMsg(
             `❌ Failed to update operator profile: ${
               (error as any).message || "Unknown error"
@@ -187,16 +201,13 @@ export default function OperatorRegisterPage() {
             email,
             country,
             location,
-            slug, // 👈 IMPORTANT: fix for NOT NULL slug
-            status: "pending", // admin must approve
+            slug,
+            status: "pending",
           },
         ]);
 
         if (error) {
-          console.error(
-            "operator insert error:",
-            JSON.stringify(error, null, 2)
-          );
+          console.error("operator insert error:", JSON.stringify(error, null, 2));
           setMsg(
             `❌ Failed to create operator profile: ${
               (error as any).message || "Unknown error"
@@ -253,12 +264,7 @@ export default function OperatorRegisterPage() {
         padding: "32px 16px",
       }}
     >
-      <main
-        style={{
-          maxWidth: 720,
-          margin: "0 auto",
-        }}
-      >
+      <main style={{ maxWidth: 720, margin: "0 auto" }}>
         <section
           style={{
             display: "flex",
@@ -423,13 +429,7 @@ export default function OperatorRegisterPage() {
             </div>
           </div>
 
-          <div
-            style={{
-              marginTop: 20,
-              display: "flex",
-              justifyContent: "flex-end",
-            }}
-          >
+          <div style={{ marginTop: 20, display: "flex", justifyContent: "flex-end" }}>
             <button
               type="button"
               onClick={handleSave}

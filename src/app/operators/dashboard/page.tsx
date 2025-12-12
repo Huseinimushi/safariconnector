@@ -56,6 +56,11 @@ type MessageThreadRow = {
   status?: string | null;
 };
 
+type BookingSummaryRow = {
+  id: string;
+  status: string | null;
+};
+
 /* ---------- UNREAD helpers (Operator) ---------- */
 
 const OPERATOR_UNREAD_KEY = "sc_unread_operator";
@@ -126,6 +131,9 @@ const formatStatus = (status?: string | null) => {
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
 
+const normaliseStatus = (status: string | null | undefined) =>
+  (status || "pending").toLowerCase();
+
 /* ---------- Component ---------- */
 
 export default function OperatorDashboardPage() {
@@ -137,6 +145,9 @@ export default function OperatorDashboardPage() {
   const [activeTripsCount, setActiveTripsCount] = useState<number>(0);
   const [pendingQuotesCount, setPendingQuotesCount] = useState<number>(0); // AI + manual
   const [totalQuotesCount, setTotalQuotesCount] = useState<number>(0); // AI + manual
+
+  const [bookingsCount, setBookingsCount] = useState<number>(0);
+  const [pendingBookingsCount, setPendingBookingsCount] = useState<number>(0);
 
   const [messageThreadsCount, setMessageThreadsCount] = useState<number>(0);
   const [messageNewCount, setMessageNewCount] = useState<number>(0);
@@ -222,8 +233,8 @@ export default function OperatorDashboardPage() {
         if (!isMounted) return;
         setOperator(operatorRow);
 
-        // 3) Load trips + AI quotes + manual requests in parallel
-        const [tripsRes, quotesRes, manualRes] = await Promise.all([
+        // 3) Load trips + AI quotes + manual requests + bookings in parallel
+        const [tripsRes, quotesRes, manualRes, bookingsRes] = await Promise.all([
           supabase
             .from("trips")
             .select("id, status, is_published")
@@ -235,6 +246,10 @@ export default function OperatorDashboardPage() {
           supabase
             .from("quote_requests")
             .select("id, operator_id")
+            .eq("operator_id", operatorId),
+          supabase
+            .from("bookings")
+            .select("id, status")
             .eq("operator_id", operatorId),
         ]);
 
@@ -250,10 +265,29 @@ export default function OperatorDashboardPage() {
         /* Manual quote_requests (from trip pages) */
         let manualRequestsCount = 0;
         if (manualRes.error) {
-          console.warn("operator dashboard manual quote_requests error:", manualRes.error);
+          console.warn(
+            "operator dashboard manual quote_requests error:",
+            manualRes.error
+          );
         } else {
           const manualRows = (manualRes.data || []) as ManualQuoteRequestRow[];
           manualRequestsCount = manualRows.length;
+        }
+
+        /* Bookings summary */
+        if (bookingsRes.error) {
+          console.warn("operator dashboard bookings error:", bookingsRes.error);
+        } else {
+          const bookingRows = (bookingsRes.data || []) as BookingSummaryRow[];
+          const total = bookingRows.length;
+          const pending = bookingRows.filter(
+            (b) => normaliseStatus(b.status) === "pending"
+          ).length;
+
+          if (isMounted) {
+            setBookingsCount(total);
+            setPendingBookingsCount(pending);
+          }
         }
 
         /* Quotes summary + messages (AI pipeline) */
@@ -490,7 +524,7 @@ export default function OperatorDashboardPage() {
         </div>
       )}
 
-      {/* Top summary cards: Trips / Quote Requests (AI + manual) / Messages / Profile */}
+      {/* Top summary cards: Trips / Bookings / Quote Requests / Messages / Profile */}
       <section
         style={{
           display: "grid",
@@ -553,6 +587,63 @@ export default function OperatorDashboardPage() {
               }}
             >
               Manage trips →
+            </Link>
+          </div>
+        </div>
+
+        {/* Bookings */}
+        <div
+          style={{
+            borderRadius: 20,
+            border: "1px solid #E5E7EB",
+            backgroundColor: "#FFFFFF",
+            padding: "14px 16px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 700,
+              color: "#111827",
+              marginBottom: 4,
+            }}
+          >
+            Bookings
+          </div>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 12,
+              color: "#6B7280",
+            }}
+          >
+            Confirmed trips generated from accepted quotes.
+          </p>
+          <div
+            style={{
+              marginTop: 10,
+              fontSize: 13,
+              color: "#111827",
+            }}
+          >
+            <strong>{pendingBookingsCount}</strong> pending /{" "}
+            <strong>{bookingsCount}</strong> total
+          </div>
+          <div
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+            }}
+          >
+            <Link
+              href="/operators/bookings"
+              style={{
+                color: "#14532D",
+                textDecoration: "none",
+                fontWeight: 600,
+              }}
+            >
+              View bookings →
             </Link>
           </div>
         </div>

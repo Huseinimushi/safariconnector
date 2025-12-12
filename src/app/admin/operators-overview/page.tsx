@@ -93,9 +93,8 @@ export default function AdminOperatorsOverviewPage() {
 
       const { data, error } = await supabase
         .from("operators")
-        .select<OperatorRow>(
-          "id, company_name, country, location, email, status, created_at"
-        )
+        // ✅ FIX: do NOT use .select<OperatorRow>(...) here
+        .select("id, company_name, country, location, email, status, created_at")
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -105,12 +104,10 @@ export default function AdminOperatorsOverviewPage() {
         return;
       }
 
-      const operators = data || [];
+      const operators = ((data || []) as unknown) as OperatorRow[];
 
       const total = operators.length;
-      const approved = operators.filter(
-        (op) => op.status === "approved"
-      ).length;
+      const approved = operators.filter((op) => op.status === "approved").length;
       const pending = operators.filter(
         (op) => !op.status || op.status === "pending"
       ).length;
@@ -154,11 +151,9 @@ export default function AdminOperatorsOverviewPage() {
 
     setStats((prev) => ({
       total: prev.total,
-      approved:
-        newStatus === "approved" ? prev.approved + 1 : prev.approved,
+      approved: newStatus === "approved" ? prev.approved + 1 : prev.approved,
       pending: Math.max(prev.pending - 1, 0),
-      rejected:
-        newStatus === "rejected" ? prev.rejected + 1 : prev.rejected,
+      rejected: newStatus === "rejected" ? prev.rejected + 1 : prev.rejected,
     }));
 
     setMsg(
@@ -170,17 +165,13 @@ export default function AdminOperatorsOverviewPage() {
   };
 
   if (checking) {
-    return (
-      <main style={fullPageCenter}>Checking admin access…</main>
-    );
+    return <main style={fullPageCenter}>Checking admin access…</main>;
   }
 
   if (!allowed) return null;
 
   if (loading) {
-    return (
-      <main style={fullPageCenter}>Loading operators overview…</main>
-    );
+    return <main style={fullPageCenter}>Loading operators overview…</main>;
   }
 
   return (
@@ -224,8 +215,8 @@ export default function AdminOperatorsOverviewPage() {
               maxWidth: 640,
             }}
           >
-            Review new operator applications, approve trusted suppliers, and
-            keep Safari Connector&apos;s marketplace curated and safe.
+            Review new operator applications, approve trusted suppliers, and keep
+            Safari Connector&apos;s marketplace curated and safe.
           </p>
         </header>
 
@@ -236,9 +227,7 @@ export default function AdminOperatorsOverviewPage() {
               padding: "9px 12px",
               borderRadius: 10,
               fontSize: 13,
-              backgroundColor: msg.startsWith("❌")
-                ? "#FEE2E2"
-                : "#ECFDF3",
+              backgroundColor: msg.startsWith("❌") ? "#FEE2E2" : "#ECFDF3",
               color: msg.startsWith("❌") ? "#B91C1C" : "#166534",
               border: `1px solid ${CARD_BORDER}`,
             }}
@@ -280,9 +269,7 @@ export default function AdminOperatorsOverviewPage() {
           <div style={statCard}>
             <p style={statLabel}>Rejected / blocked</p>
             <p style={statValue}>{stats.rejected}</p>
-            <p style={statSub}>
-              Operators you&apos;ve chosen not to list.
-            </p>
+            <p style={statSub}>Operators you&apos;ve chosen not to list.</p>
           </div>
         </section>
 
@@ -314,8 +301,7 @@ export default function AdminOperatorsOverviewPage() {
               color: "#6B7280",
             }}
           >
-            Approve trusted suppliers so they can start receiving quote
-            requests.
+            Approve trusted suppliers so they can start receiving quote requests.
           </p>
 
           {pendingOperators.length === 0 ? (
@@ -379,8 +365,7 @@ export default function AdminOperatorsOverviewPage() {
                           color: "#9CA3AF",
                         }}
                       >
-                        Joined{" "}
-                        {new Date(op.created_at).toLocaleDateString()}
+                        Joined {new Date(op.created_at).toLocaleDateString()}
                       </p>
                     )}
                   </div>
@@ -416,9 +401,7 @@ export default function AdminOperatorsOverviewPage() {
                       <button
                         type="button"
                         disabled={updatingId === op.id}
-                        onClick={() =>
-                          handleUpdateStatus(op.id, "approved")
-                        }
+                        onClick={() => handleUpdateStatus(op.id, "approved")}
                         style={{
                           padding: "6px 10px",
                           fontSize: 12,
@@ -427,8 +410,7 @@ export default function AdminOperatorsOverviewPage() {
                           border: "none",
                           backgroundColor: "#BBF7D0",
                           color: "#14532D",
-                          cursor:
-                            updatingId === op.id ? "default" : "pointer",
+                          cursor: updatingId === op.id ? "default" : "pointer",
                           opacity: updatingId === op.id ? 0.7 : 1,
                         }}
                       >
@@ -438,9 +420,7 @@ export default function AdminOperatorsOverviewPage() {
                       <button
                         type="button"
                         disabled={updatingId === op.id}
-                        onClick={() =>
-                          handleUpdateStatus(op.id, "rejected")
-                        }
+                        onClick={() => handleUpdateStatus(op.id, "rejected")}
                         style={{
                           padding: "6px 10px",
                           fontSize: 12,
@@ -449,8 +429,7 @@ export default function AdminOperatorsOverviewPage() {
                           border: "1px solid #FECACA",
                           backgroundColor: "#FEF2F2",
                           color: "#B91C1C",
-                          cursor:
-                            updatingId === op.id ? "default" : "pointer",
+                          cursor: updatingId === op.id ? "default" : "pointer",
                           opacity: updatingId === op.id ? 0.7 : 1,
                         }}
                       >
