@@ -44,18 +44,23 @@ type BookingRow = {
   traveller_id: string | null;
   operator_id: string | null;
   quote_id: string | null;
-  status: string | null; // pending_payment / confirmed / cancelled
+
+  // UPDATED lifecycle statuses
+  status: string | null; // pending_payment / payment_submitted / payment_verified / confirmed / cancelled
+
   date_from: string | null;
   date_to: string | null;
   pax: number | null;
   total_amount: number | null;
   currency: string | null;
-  payment_status: string | null; // unpaid / deposit_paid / paid_in_full
+
+  // UPDATED payment statuses
+  payment_status: string | null; // unpaid / proof_submitted / deposit_paid / paid_in_full
+
   created_at: string | null;
 };
 
 /* ---------- Traveller list status type (UI only) ---------- */
-
 type TravellerStatus = "pending" | "answered" | "confirmed" | "cancelled" | "archived";
 
 /* ---------- UNREAD helpers ---------- */
@@ -156,7 +161,7 @@ const formatDateTime = (value: string | null) => {
   });
 };
 
-/* Traveller-facing status label */
+/* Traveller-facing status label (left list only) */
 const getTravellerStatusLabel = (status?: string | null) => {
   const s = (status || "pending").toLowerCase();
   switch (s) {
@@ -189,6 +194,136 @@ const statusPill = (status: TravellerStatus) => {
     default:
       return { bg: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A" };
   }
+};
+
+/* Booking / payment labels (right top bubble) */
+const bookingStatusLabel = (status?: string | null) => {
+  const s = (status || "pending_payment").toLowerCase();
+  switch (s) {
+    case "pending_payment":
+      return "Pending payment";
+    case "payment_submitted":
+      return "Payment submitted (unverified)";
+    case "payment_verified":
+      return "Payment verified";
+    case "confirmed":
+      return "Confirmed booking";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+};
+
+const paymentStatusLabel = (status?: string | null) => {
+  const s = (status || "unpaid").toLowerCase();
+  switch (s) {
+    case "unpaid":
+      return "Unpaid";
+    case "proof_submitted":
+      return "Proof submitted";
+    case "deposit_paid":
+      return "Deposit paid";
+    case "paid_in_full":
+      return "Paid in full";
+    default:
+      return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+};
+
+const bookingTone = (statusRaw: string) => {
+  switch (statusRaw) {
+    case "confirmed":
+      return { bg: "#ECFDF5", border: "1px solid #BBF7D0", color: "#166534" };
+    case "cancelled":
+      return { bg: "#FEF2F2", border: "1px solid #FECACA", color: "#B91C1C" };
+    case "payment_verified":
+      return { bg: "#EFF6FF", border: "1px solid #BFDBFE", color: "#1D4ED8" };
+    case "payment_submitted":
+      return { bg: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E" };
+    case "pending_payment":
+    default:
+      return { bg: "#F3F4F6", border: "1px solid #E5E7EB", color: "#4B5563" };
+  }
+};
+
+/* ---------- API response safe reader ---------- */
+
+async function safeReadResponse(res: Response): Promise<{
+  ok: boolean;
+  status: number;
+  statusText: string;
+  contentType: string | null;
+  json: any | null;
+  text: string | null;
+}> {
+  const contentType = res.headers.get("content-type");
+  const status = res.status;
+  const statusText = res.statusText;
+
+  // JSON if looks like JSON
+  if (contentType && contentType.toLowerCase().includes("application/json")) {
+    const json = await res.json().catch(() => null);
+    return { ok: res.ok, status, statusText, contentType, json, text: null };
+  }
+
+  // Otherwise text
+  const text = await res.text().catch(() => null);
+
+  // Try parse JSON even if wrong header
+  let json: any | null = null;
+  if (text) {
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = null;
+    }
+  }
+
+  return { ok: res.ok, status, statusText, contentType, json, text };
+}
+
+/* ---------- AUTH/Fetch helpers (FIX) ---------- */
+
+// ✅ get token; if missing, refreshSession
+const getFreshAccessToken = async (): Promise<string | null> => {
+  const s1 = await supabase.auth.getSession();
+  const t1 = s1.data.session?.access_token;
+  if (t1) return t1;
+
+  const s2 = await supabase.auth.refreshSession();
+  const t2 = s2.data.session?.access_token;
+  if (t2) return t2;
+
+  return null;
+};
+
+// ✅ fetch wrapper: Bearer + include cookies + safeReadResponse
+const fetchWithBearer = async (url: string, body: any) => {
+  const token = await getFreshAccessToken();
+  if (!token) {
+    return {
+      ok: false,
+      status: 401,
+      statusText: "No session",
+      contentType: "application/json",
+      json: { ok: false, error: "Session expired" },
+      text: null,
+    } as const;
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    // IMPORTANT: helps if you have middleware / cookie-based checks too
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+
+  return safeReadResponse(res);
 };
 
 /* ---------- Component ---------- */
@@ -225,6 +360,11 @@ export default function TravellerQuotesPage() {
   // Payment modal state
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"card" | "mobile" | "bank" | null>(null);
+
+  // Payment notify (I have paid) state
+  const [paymentNotifySending, setPaymentNotifySending] = useState(false);
+  const [paymentNotifyError, setPaymentNotifyError] = useState<string | null>(null);
+  const [paymentNotifySuccess, setPaymentNotifySuccess] = useState<string | null>(null);
 
   // Load local closed map once on mount
   useEffect(() => {
@@ -315,6 +455,16 @@ export default function TravellerQuotesPage() {
 
   const selectedKey = selectedEnquiryId != null ? String(selectedEnquiryId) : null;
   const selectedIsClosed = !!selectedKey && closedMapState[selectedKey] === true;
+
+  // Reset per-enquiry transient messages when changing enquiry
+  useEffect(() => {
+    setAcceptError(null);
+    setAcceptSuccess(null);
+    setPaymentNotifyError(null);
+    setPaymentNotifySuccess(null);
+    setShowPaymentModal(false);
+    setSelectedPaymentMethod(null);
+  }, [selectedEnquiryId]);
 
   /* ---------- Load messages ---------- */
   useEffect(() => {
@@ -417,7 +567,9 @@ export default function TravellerQuotesPage() {
       try {
         const { data, error } = await supabase
           .from("bookings")
-          .select("id, trip_id, traveller_id, operator_id, quote_id, status, date_from, date_to, pax, total_amount, currency, payment_status, created_at")
+          .select(
+            "id, trip_id, traveller_id, operator_id, quote_id, status, date_from, date_to, pax, total_amount, currency, payment_status, created_at"
+          )
           .eq("quote_id", quote.id)
           .maybeSingle();
 
@@ -445,12 +597,10 @@ export default function TravellerQuotesPage() {
 
   const handleSelectEnquiry = (id: number) => {
     setSelectedEnquiryId(id);
+
     const params = new URLSearchParams(searchParams?.toString() || "");
     params.set("enquiry_id", String(id));
     router.replace(`/traveller/quotes?${params.toString()}`);
-
-    setAcceptError(null);
-    setAcceptSuccess(null);
   };
 
   const handleSend = async () => {
@@ -474,9 +624,7 @@ export default function TravellerQuotesPage() {
         return;
       }
 
-      if (data) {
-        setMessages((prev) => [...prev, data as MessageRow]);
-      }
+      if (data) setMessages((prev) => [...prev, data as MessageRow]);
     } catch (err: any) {
       console.error("traveller send message exception:", err);
     }
@@ -504,6 +652,7 @@ export default function TravellerQuotesPage() {
     }
   };
 
+  // ✅ FIXED: Bearer + refresh + include cookies + safe parsing
   const handleAcceptAndBook = async () => {
     if (!quote || !selectedEnquiryId || accepting || selectedIsClosed) return;
 
@@ -518,7 +667,7 @@ export default function TravellerQuotesPage() {
 
     try {
       // 1) Send acceptance message into the chat
-      const messageText = `I’m happy with this quote (${quote.currency || "USD"} ${quote.total_price ?? ""}). Please proceed to confirm my booking and share the next steps.`;
+      const messageText = `I’m happy with this quote (${quote.currency || "USD"} ${quote.total_price ?? ""}). Please proceed with booking and share the payment instructions.`;
 
       const { data: msgRow, error: msgErr } = await supabase
         .from("quote_request_messages")
@@ -531,52 +680,158 @@ export default function TravellerQuotesPage() {
         .single();
 
       if (msgErr) {
-        console.error("traveller accept & book message error:", msgErr);
+        console.error("traveller accept & book message error:", {
+          message: (msgErr as any)?.message,
+          details: (msgErr as any)?.details,
+          hint: (msgErr as any)?.hint,
+          code: (msgErr as any)?.code,
+        });
         setAcceptError("Could not send your acceptance message. Please try again.");
-        setAccepting(false);
         return;
       }
 
       if (msgRow) setMessages((prev) => [...prev, msgRow as MessageRow]);
 
-      // 2) Hit API to create / fetch booking record
-      const res = await fetch("/api/traveller/quotes/accept-and-book", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          quote_id: quote.id,
-          enquiry_id: selectedEnquiryId,
-        }),
+      // 2) Call API
+      const parsed = await fetchWithBearer("/api/traveller/quotes/accept-and-book", {
+        quote_id: quote.id,
+        enquiry_id: selectedEnquiryId,
       });
 
-      const json = await res.json().catch(() => null);
+      const json = parsed.json;
 
-      if (!res.ok || !json?.ok) {
-        console.error("traveller accept & book booking API error:", json);
-        setAcceptError(
-          "We sent your acceptance to the safari expert, but could not create the booking record automatically. Our team will still see your acceptance."
-        );
-      } else {
-        if (json.booking) setBooking(json.booking as BookingRow);
-        setAcceptSuccess(
-          "We’ve notified your safari expert that you accepted this quote. They will follow up to confirm your booking and share the next steps."
-        );
+      if (!parsed.ok || !json?.ok) {
+        const bodyPreview =
+          (parsed.text || "")
+            .replace(/\s+/g, " ")
+            .slice(0, 260) || null;
+
+        console.error("traveller accept & book booking API error:", {
+          status: parsed.status,
+          statusText: parsed.statusText,
+          contentType: parsed.contentType,
+          json,
+          bodyPreview,
+        });
+
+        if (parsed.status === 404) {
+          setAcceptError("Booking endpoint is missing (404). API route is not available on server.");
+        } else if (parsed.status === 401 || parsed.status === 403) {
+          setAcceptError("Session expired / access denied. Please log out and log back in, then try again.");
+        } else {
+          setAcceptError(
+            json?.error ||
+              "We sent your acceptance, but could not create the booking record automatically. Our team will still see your acceptance."
+          );
+        }
+        return;
       }
+
+      if (json.booking) setBooking(json.booking as BookingRow);
+
+      setAcceptSuccess(
+        "Booking initiated. Please wait for payment instructions in the chat, then make payment to Safari Connector and share your proof of payment here."
+      );
     } catch (err) {
-      console.error("traveller accept & book booking error:", err);
-      setAcceptError("We sent your acceptance to the safari expert, but there was an issue creating the booking automatically.");
+      console.error("traveller accept & book booking exception:", err);
+      setAcceptError("We sent your acceptance, but there was an unexpected error creating the booking automatically.");
     } finally {
       setAccepting(false);
+    }
+  };
+
+  /**
+   * Sends a traveller message "I've paid" and updates the booking server-side:
+   *  - status -> payment_submitted
+   *  - payment_status -> proof_submitted
+   */
+  // ✅ FIXED: Bearer + refresh + include cookies + safe parsing
+  const handleSendPaymentDoneMessage = async () => {
+    if (!selectedEnquiryId || !booking || selectedIsClosed || paymentNotifySending) return;
+
+    setPaymentNotifyError(null);
+    setPaymentNotifySuccess(null);
+    setPaymentNotifySending(true);
+
+    const refShort = booking.id.slice(0, 8).toUpperCase();
+    const amountText = `${booking.currency || quote?.currency || "USD"} ${
+      booking.total_amount ?? quote?.total_price ?? ""
+    }`;
+
+    const messageText = [
+      `Payment sent for booking ${refShort}.`,
+      `Amount: ${amountText}.`,
+      ``,
+      `I have attached / will attach the proof of payment here (screenshot/bank slip). Please confirm once verified.`,
+    ].join("\n");
+
+    try {
+      // 1) Insert chat message
+      const { data, error } = await supabase
+        .from("quote_request_messages")
+        .insert({
+          quote_request_id: selectedEnquiryId,
+          sender_role: "traveller",
+          message: messageText,
+        })
+        .select("id, quote_request_id, sender_role, message, created_at")
+        .single();
+
+      if (error) {
+        console.error("traveller payment done message error:", error);
+        setPaymentNotifyError("Could not send your payment message. Please try again.");
+        return;
+      }
+      if (data) setMessages((prev) => [...prev, data as MessageRow]);
+
+      // 2) Update booking statuses server-side
+      const parsed = await fetchWithBearer("/api/bookings/mark-payment-submitted", {
+        booking_id: booking.id,
+      });
+
+      const json = parsed.json;
+
+      if (!parsed.ok || !json?.ok) {
+        const bodyPreview =
+          (parsed.text || "")
+            .replace(/\s+/g, " ")
+            .slice(0, 260) || null;
+
+        console.error("mark-payment-submitted API error:", {
+          status: parsed.status,
+          statusText: parsed.statusText,
+          contentType: parsed.contentType,
+          json,
+          bodyPreview,
+        });
+
+        setPaymentNotifySuccess("Payment message sent. Our team will verify the payment and update your booking.");
+        return;
+      }
+
+      if (json.booking) setBooking(json.booking as BookingRow);
+      setPaymentNotifySuccess("Payment marked as submitted. Safari Connector will verify and confirm shortly.");
+    } catch (err) {
+      console.error("traveller payment done message exception:", err);
+      setPaymentNotifySuccess("Payment message sent. Our team will verify the payment and update your booking.");
+    } finally {
+      setPaymentNotifySending(false);
     }
   };
 
   /* ---------- Derived booking/payment flags for UI ---------- */
 
   const bookingStatusRaw = (booking?.status || "pending_payment").toLowerCase();
-  const paymentStatusRaw = (booking?.payment_status || "").toLowerCase();
-  const bookingIsConfirmed = bookingStatusRaw === "confirmed";
-  const bookingIsCancelled = bookingStatusRaw === "cancelled";
-  const paymentIsPaidInFull = paymentStatusRaw === "paid_in_full";
+  const paymentStatusRaw = (booking?.payment_status || "unpaid").toLowerCase();
+
+  const isCancelled = bookingStatusRaw === "cancelled";
+  const isConfirmed = bookingStatusRaw === "confirmed";
+
+  const isPaymentSubmitted = bookingStatusRaw === "payment_submitted" || paymentStatusRaw === "proof_submitted";
+  const isPaymentVerified = bookingStatusRaw === "payment_verified";
+  const isPaidInFull = paymentStatusRaw === "paid_in_full";
+
+  const tone = bookingTone(bookingStatusRaw);
 
   /* ---------- Render ---------- */
 
@@ -604,11 +859,10 @@ export default function TravellerQuotesPage() {
           >
             Safari Connector
           </div>
-          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900, color: "#14532D" }}>
-            Your safari enquiries
-          </h1>
+          <h1 style={{ margin: 0, fontSize: 28, fontWeight: 900, color: "#14532D" }}>Your safari enquiries</h1>
           <p style={{ margin: 0, marginTop: 4, fontSize: 14, color: "#4B5563" }}>
-            View the trips you&apos;ve enquired about, chat with our safari experts, and confirm your booking once you&apos;re happy with the quote.
+            View the trips you&apos;ve enquired about, chat with our safari experts, and proceed to booking once you&apos;re
+            happy with the quote.
           </p>
         </div>
 
@@ -691,7 +945,16 @@ export default function TravellerQuotesPage() {
               You haven&apos;t requested any quotes yet. When you send a request from a trip page, it will appear here.
             </div>
           ) : (
-            <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 8, maxHeight: 430, overflowY: "auto" }}>
+            <div
+              style={{
+                marginTop: 6,
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                maxHeight: 430,
+                overflowY: "auto",
+              }}
+            >
               {enquiries.map((q) => {
                 const isActive = selectedEnquiryId != null && q.id === selectedEnquiryId;
 
@@ -701,16 +964,15 @@ export default function TravellerQuotesPage() {
 
                 const isClosedLocal = closedMapState[key] === true;
 
-                // NOTE: messages[] is for the currently selected enquiry only (keeps your existing logic).
-                const hasUnread = !isClosedLocal
-                  ? messages.some((m) => {
-                      if ((m.sender_role || "").toLowerCase() !== "operator") return false;
-                      const t = m.created_at ? new Date(m.created_at).getTime() : 0;
-                      return t > lastSeen;
-                    })
-                  : false;
+                const hasUnread =
+                  !isClosedLocal && isActive
+                    ? messages.some((m) => {
+                        if ((m.sender_role || "").toLowerCase() !== "operator") return false;
+                        const t = m.created_at ? new Date(m.created_at).getTime() : 0;
+                        return t > lastSeen;
+                      })
+                    : false;
 
-                // ✅ FIX: explicitly widen to TravellerStatus so later comparisons/styles are valid.
                 const statusRaw: TravellerStatus = isClosedLocal ? "archived" : hasUnread ? "answered" : "pending";
                 const pill = statusPill(statusRaw);
 
@@ -800,12 +1062,21 @@ export default function TravellerQuotesPage() {
           }}
         >
           {!selectedEnquiry ? (
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "#6B7280" }}>
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 13,
+                color: "#6B7280",
+              }}
+            >
               Select an enquiry on the left to see the chat with our safari experts.
             </div>
           ) : (
             <>
-              {/* Quote + Accept/Make payment bubble in top-right */}
+              {/* Quote + Booking bubble (top-right) */}
               <div style={{ position: "absolute", top: 16, right: 16, zIndex: 1 }}>
                 {loadingQuote ? (
                   <span
@@ -825,121 +1096,186 @@ export default function TravellerQuotesPage() {
                 ) : quote ? (
                   <div
                     style={{
-                      borderRadius: 999,
-                      padding: "8px 12px",
-                      backgroundColor: "#DCFCE7",
-                      border: "1px solid #A7F3D0",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      maxWidth: 360,
+                      borderRadius: 16,
+                      padding: "10px 12px",
+                      backgroundColor: "#FFFFFF",
+                      border: "1px solid #E5E7EB",
+                      maxWidth: 420,
                     }}
                   >
-                    <div style={{ display: "flex", flexDirection: "column" }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: "#065F46" }}>
-                        Quote ready: {quote.currency || "USD"} {quote.total_price ?? "-"}
-                      </span>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "#065F46" }}>
+                          Quote: {quote.currency || "USD"} {quote.total_price ?? "-"}
+                        </div>
+                        {quote.notes && (
+                          <div style={{ marginTop: 2, fontSize: 11, color: "#4B5563", whiteSpace: "pre-line" }}>
+                            {quote.notes}
+                          </div>
+                        )}
+                      </div>
 
-                      {quote.notes && <span style={{ fontSize: 11, color: "#047857" }}>{quote.notes}</span>}
-
-                      {booking && (
-                        <span style={{ marginTop: 2, fontSize: 11, color: "#047857" }}>
-                          {bookingIsConfirmed && paymentIsPaidInFull ? (
-                            <>
-                              Booking <strong>fully confirmed &amp; paid</strong> · ref{" "}
-                              <span style={{ fontFamily: "monospace" }}>{booking.id.slice(0, 8).toUpperCase()}</span>
-                            </>
-                          ) : (
-                            <>
-                              Booking created · ref{" "}
-                              <span style={{ fontFamily: "monospace" }}>{booking.id.slice(0, 8).toUpperCase()}</span>{" "}
-                              · status{" "}
-                              <strong>
-                                {bookingStatusRaw.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-                              </strong>{" "}
-                              · payment{" "}
-                              <strong>
-                                {paymentStatusRaw
-                                  ? paymentStatusRaw.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
-                                  : "Not set"}
-                              </strong>
-                            </>
-                          )}
-                        </span>
-                      )}
-
-                      {!booking && (
-                        <span style={{ marginTop: 2, fontSize: 11, color: "#047857" }}>
-                          Happy with this quote? Accept to create your booking and confirm the trip.
-                        </span>
-                      )}
-
-                      {acceptError && <span style={{ marginTop: 2, fontSize: 11, color: "#B91C1C" }}>{acceptError}</span>}
-                      {acceptSuccess && <span style={{ marginTop: 2, fontSize: 11, color: "#065F46" }}>{acceptSuccess}</span>}
-                      {bookingIsCancelled && (
-                        <span style={{ marginTop: 2, fontSize: 11, color: "#B91C1C" }}>
-                          This booking is cancelled. Please contact your safari expert for next steps.
-                        </span>
-                      )}
-                    </div>
-
-                    {booking ? (
-                      bookingIsConfirmed && paymentIsPaidInFull ? (
-                        <span
-                          style={{
-                            borderRadius: 999,
-                            padding: "6px 12px",
-                            backgroundColor: "#ECFDF5",
-                            border: "1px solid #BBF7D0",
-                            color: "#065F46",
-                            fontSize: 11,
-                            fontWeight: 700,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          Payment received
-                        </span>
+                      {booking ? (
+                        isConfirmed && isPaidInFull ? (
+                          <span
+                            style={{
+                              borderRadius: 999,
+                              padding: "6px 12px",
+                              backgroundColor: "#ECFDF5",
+                              border: "1px solid #BBF7D0",
+                              color: "#065F46",
+                              fontSize: 11,
+                              fontWeight: 800,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Paid & confirmed
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedPaymentMethod(null);
+                              setShowPaymentModal(true);
+                            }}
+                            disabled={isCancelled}
+                            style={{
+                              border: "none",
+                              borderRadius: 999,
+                              padding: "6px 12px",
+                              backgroundColor: isCancelled ? "#9CA3AF" : "#0F766E",
+                              color: "#FFFFFF",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: isCancelled ? "not-allowed" : "pointer",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Make payment
+                          </button>
+                        )
                       ) : (
                         <button
                           type="button"
-                          onClick={() => {
-                            setSelectedPaymentMethod(null);
-                            setShowPaymentModal(true);
-                          }}
+                          onClick={handleAcceptAndBook}
+                          disabled={accepting}
                           style={{
                             border: "none",
                             borderRadius: 999,
                             padding: "6px 12px",
-                            backgroundColor: "#0F766E",
+                            backgroundColor: accepting ? "#9CA3AF" : "#14532D",
                             color: "#FFFFFF",
                             fontSize: 11,
-                            fontWeight: 600,
-                            cursor: "pointer",
+                            fontWeight: 700,
+                            cursor: accepting ? "wait" : "pointer",
                             whiteSpace: "nowrap",
                           }}
                         >
-                          Make payment
+                          {accepting ? "Processing..." : "Accept & book"}
                         </button>
-                      )
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleAcceptAndBook}
-                        disabled={accepting}
+                      )}
+                    </div>
+
+                    {booking ? (
+                      <div
                         style={{
-                          border: "none",
-                          borderRadius: 999,
-                          padding: "6px 12px",
-                          backgroundColor: accepting ? "#9CA3AF" : "#14532D",
-                          color: "#FFFFFF",
-                          fontSize: 11,
-                          fontWeight: 600,
-                          cursor: accepting ? "wait" : "pointer",
-                          whiteSpace: "nowrap",
+                          marginTop: 10,
+                          borderRadius: 14,
+                          padding: "10px 10px",
+                          backgroundColor: tone.bg,
+                          border: tone.border,
+                          color: tone.color,
                         }}
                       >
-                        {accepting ? "Processing..." : "Accept & book"}
-                      </button>
+                        <div style={{ fontSize: 12, fontWeight: 900, marginBottom: 4 }}>
+                          {bookingStatusLabel(booking.status)}
+                        </div>
+
+                        <div style={{ fontSize: 11, color: "#374151", marginBottom: 2 }}>
+                          Booking ref:{" "}
+                          <span style={{ fontFamily: "monospace" }}>{booking.id.slice(0, 8).toUpperCase()}</span>
+                        </div>
+
+                        <div style={{ fontSize: 11, color: "#374151", marginBottom: 2 }}>
+                          Amount: {booking.currency || quote.currency || "USD"}{" "}
+                          {booking.total_amount ?? quote.total_price ?? "-"}
+                        </div>
+
+                        <div style={{ fontSize: 11, color: "#4B5563" }}>
+                          Payment status: <strong>{paymentStatusLabel(booking.payment_status)}</strong>
+                        </div>
+
+                        {!isConfirmed && !isCancelled && (
+                          <div
+                            style={{
+                              marginTop: 8,
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 8,
+                              justifyContent: "flex-end",
+                            }}
+                          >
+                            <button
+                              type="button"
+                              onClick={handleSendPaymentDoneMessage}
+                              disabled={paymentNotifySending}
+                              style={{
+                                borderRadius: 999,
+                                padding: "6px 12px",
+                                border: "1px solid #D1D5DB",
+                                backgroundColor: paymentNotifySending ? "#F3F4F6" : "#FFFFFF",
+                                color: "#374151",
+                                fontSize: 11,
+                                fontWeight: 700,
+                                cursor: paymentNotifySending ? "wait" : "pointer",
+                              }}
+                            >
+                              {paymentNotifySending ? "Sending..." : "I have paid (notify)"}
+                            </button>
+                          </div>
+                        )}
+
+                        {paymentNotifyError && (
+                          <div style={{ marginTop: 6, fontSize: 11, color: "#B91C1C" }}>{paymentNotifyError}</div>
+                        )}
+                        {paymentNotifySuccess && (
+                          <div style={{ marginTop: 6, fontSize: 11, color: "#065F46" }}>{paymentNotifySuccess}</div>
+                        )}
+
+                        {isPaymentSubmitted && !isPaymentVerified && !isConfirmed && !isCancelled && (
+                          <div style={{ marginTop: 6, fontSize: 11, color: "#92400E" }}>
+                            Proof received / payment submitted. Waiting for Safari Connector to verify.
+                          </div>
+                        )}
+
+                        {isPaymentVerified && !isConfirmed && !isCancelled && (
+                          <div style={{ marginTop: 6, fontSize: 11, color: "#1D4ED8" }}>
+                            Payment verified. Your safari expert will confirm the booking shortly.
+                          </div>
+                        )}
+
+                        {isCancelled && (
+                          <div style={{ marginTop: 6, fontSize: 11, color: "#B91C1C" }}>
+                            This booking is cancelled. Please contact your safari expert for next steps.
+                          </div>
+                        )}
+
+                        {isConfirmed && (
+                          <div style={{ marginTop: 6, fontSize: 11, color: "#166534" }}>
+                            Booking confirmed. You will receive final travel documents in the chat/email.
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 10, fontSize: 11, color: "#065F46" }}>
+                        Happy with this quote? Click <strong>Accept &amp; book</strong> to create your booking. Then you
+                        will receive payment instructions in the chat.
+                      </div>
+                    )}
+
+                    {acceptError && <div style={{ marginTop: 6, fontSize: 11, color: "#B91C1C" }}>{acceptError}</div>}
+                    {acceptSuccess && (
+                      <div style={{ marginTop: 6, fontSize: 11, color: "#065F46" }}>{acceptSuccess}</div>
                     )}
                   </div>
                 ) : (
@@ -961,7 +1297,16 @@ export default function TravellerQuotesPage() {
               </div>
 
               {/* Header + Close chat */}
-              <div style={{ marginBottom: 10, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, paddingRight: 220 }}>
+              <div
+                style={{
+                  marginBottom: 10,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  gap: 12,
+                  paddingRight: 260,
+                }}
+              >
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 700, color: "#111827", marginBottom: 2 }}>
                     Safari Connector expert
@@ -972,13 +1317,27 @@ export default function TravellerQuotesPage() {
 
                   <div style={{ display: "flex", gap: 40, fontSize: 12, color: "#4B5563" }}>
                     <div>
-                      <div style={{ textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 11, color: "#9CA3AF" }}>
+                      <div
+                        style={{
+                          textTransform: "uppercase",
+                          letterSpacing: "0.08em",
+                          fontSize: 11,
+                          color: "#9CA3AF",
+                        }}
+                      >
                         Preferred date
                       </div>
                       <div>{selectedEnquiry.date ? formatDate(selectedEnquiry.date) : "Flexible"}</div>
                     </div>
                     <div>
-                      <div style={{ textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 11, color: "#9CA3AF" }}>
+                      <div
+                        style={{
+                          textTransform: "uppercase",
+                          letterSpacing: "0.08em",
+                          fontSize: 11,
+                          color: "#9CA3AF",
+                        }}
+                      >
                         Travellers
                       </div>
                       <div>{selectedEnquiry.pax ? selectedEnquiry.pax : "Not specified"}</div>
@@ -1024,11 +1383,32 @@ export default function TravellerQuotesPage() {
               </div>
 
               {/* Messages area */}
-              <div style={{ flex: 1, marginTop: 10, borderRadius: 18, border: "1px solid #E5E7EB", backgroundColor: "#F9FAFB", padding: 12, overflowY: "auto", maxHeight: 380 }}>
+              <div
+                style={{
+                  flex: 1,
+                  marginTop: 10,
+                  borderRadius: 18,
+                  border: "1px solid #E5E7EB",
+                  backgroundColor: "#F9FAFB",
+                  padding: 12,
+                  overflowY: "auto",
+                  maxHeight: 380,
+                }}
+              >
                 {selectedEnquiry.note && (
                   <div style={{ marginBottom: 10, alignSelf: "stretch" }}>
                     <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 3 }}>Your original request</div>
-                    <div style={{ backgroundColor: "#DCFCE7", borderRadius: 12, padding: 10, fontSize: 13, lineHeight: 1.5, border: "1px solid #A7F3D0", whiteSpace: "pre-line" }}>
+                    <div
+                      style={{
+                        backgroundColor: "#DCFCE7",
+                        borderRadius: 12,
+                        padding: 10,
+                        fontSize: 13,
+                        lineHeight: 1.5,
+                        border: "1px solid #A7F3D0",
+                        whiteSpace: "pre-line",
+                      }}
+                    >
                       {selectedEnquiry.note}
                     </div>
                   </div>
@@ -1044,7 +1424,14 @@ export default function TravellerQuotesPage() {
                   messages.map((r) => {
                     const isTraveller = (r.sender_role || "traveller").toLowerCase() === "traveller";
                     return (
-                      <div key={r.id} style={{ display: "flex", justifyContent: isTraveller ? "flex-end" : "flex-start", marginTop: 8 }}>
+                      <div
+                        key={r.id}
+                        style={{
+                          display: "flex",
+                          justifyContent: isTraveller ? "flex-end" : "flex-start",
+                          marginTop: 8,
+                        }}
+                      >
                         <div
                           style={{
                             maxWidth: "78%",
@@ -1054,6 +1441,7 @@ export default function TravellerQuotesPage() {
                             lineHeight: 1.5,
                             backgroundColor: isTraveller ? "#DCFCE7" : "#FFFFFF",
                             border: isTraveller ? "1px solid #A7F3D0" : "1px solid #E5E7EB",
+                            whiteSpace: "pre-line",
                           }}
                         >
                           <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2, color: "#6B7280" }}>
@@ -1150,18 +1538,39 @@ export default function TravellerQuotesPage() {
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
               <div>
-                <div style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: "0.12em", color: "#6B7280", marginBottom: 2 }}>
+                <div
+                  style={{
+                    fontSize: 12,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.12em",
+                    color: "#6B7280",
+                    marginBottom: 2,
+                  }}
+                >
                   Confirm your booking
                 </div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>Choose a payment method</div>
                 <div style={{ marginTop: 2, fontSize: 12, color: "#6B7280" }}>
-                  Amount due: {booking.currency || quote?.currency || "USD"} {booking.total_amount ?? quote?.total_price ?? "-"}
+                  Amount due: {booking.currency || quote?.currency || "USD"}{" "}
+                  {booking.total_amount ?? quote?.total_price ?? "-"}
+                </div>
+                <div style={{ marginTop: 2, fontSize: 12, color: "#6B7280" }}>
+                  Booking reference:{" "}
+                  <span style={{ fontFamily: "monospace" }}>{booking.id.slice(0, 8).toUpperCase()}</span>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setShowPaymentModal(false)}
-                style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 4, color: "#6B7280" }}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  cursor: "pointer",
+                  fontSize: 18,
+                  lineHeight: 1,
+                  padding: 4,
+                  color: "#6B7280",
+                }}
               >
                 ×
               </button>
@@ -1221,33 +1630,44 @@ export default function TravellerQuotesPage() {
               >
                 <div style={{ fontWeight: 600, marginBottom: 2 }}>Bank transfer</div>
                 <div style={{ fontSize: 12, color: "#6B7280" }}>
-                  Make an international bank transfer using the bank account details shared in the chat.
+                  Make a bank transfer using the bank account details shared in the chat.
                 </div>
               </button>
             </div>
 
-            <div style={{ marginTop: 10, borderRadius: 12, border: "1px dashed #E5E7EB", padding: 10, fontSize: 12, color: "#4B5563", backgroundColor: "#F9FAFB", minHeight: 60 }}>
+            <div
+              style={{
+                marginTop: 10,
+                borderRadius: 12,
+                border: "1px dashed #E5E7EB",
+                padding: 10,
+                fontSize: 12,
+                color: "#4B5563",
+                backgroundColor: "#F9FAFB",
+                minHeight: 70,
+              }}
+            >
               {selectedPaymentMethod === null && (
-                <>Select a payment method above to see the next steps. You will still receive full instructions from your safari expert in the chat.</>
+                <>Select a payment method above to see the next steps. Payment details will be shared by your safari expert in the chat.</>
               )}
               {selectedPaymentMethod === "mobile" && (
                 <>
-                  Please open your mobile money app and send the full amount using the mobile number and name shared by your safari expert in the chat. Remember to include the booking reference{" "}
-                  <span style={{ fontFamily: "monospace" }}>{booking.id.slice(0, 8).toUpperCase()}</span> in the payment description.
+                  Open your mobile money app and send the amount using the details shared in the chat. Include the booking reference{" "}
+                  <span style={{ fontFamily: "monospace" }}>{booking.id.slice(0, 8).toUpperCase()}</span> as the payment reference, then send your payment screenshot/slip in the chat.
                 </>
               )}
               {selectedPaymentMethod === "bank" && (
                 <>
-                  Please make a bank transfer from your bank to the account shared in the chat. Use the booking reference{" "}
-                  <span style={{ fontFamily: "monospace" }}>{booking.id.slice(0, 8).toUpperCase()}</span> as the payment reference. Once the transfer is done, send your bank slip or screenshot in the chat.
+                  Make a bank transfer to the bank account shared in the chat. Use the booking reference{" "}
+                  <span style={{ fontFamily: "monospace" }}>{booking.id.slice(0, 8).toUpperCase()}</span>, then send your bank slip/screenshot in the chat.
                 </>
               )}
               {selectedPaymentMethod === "card" && (
-                <>Online card payments are not yet enabled. For now, please use mobile payment or bank transfer using the details shared in the chat.</>
+                <>Online card payments are not yet enabled. Please use mobile payment or bank transfer using the details shared in the chat.</>
               )}
             </div>
 
-            <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end", gap: 8, fontSize: 12 }}>
+            <div style={{ marginTop: 10, display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12 }}>
               <button
                 type="button"
                 onClick={() => setShowPaymentModal(false)}
@@ -1263,7 +1683,30 @@ export default function TravellerQuotesPage() {
               >
                 Close
               </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  await handleSendPaymentDoneMessage();
+                  setShowPaymentModal(false);
+                }}
+                disabled={paymentNotifySending}
+                style={{
+                  borderRadius: 999,
+                  padding: "7px 14px",
+                  border: "none",
+                  backgroundColor: paymentNotifySending ? "#9CA3AF" : "#14532D",
+                  color: "#FFFFFF",
+                  fontWeight: 800,
+                  cursor: paymentNotifySending ? "wait" : "pointer",
+                }}
+              >
+                {paymentNotifySending ? "Sending..." : "I've paid (send message)"}
+              </button>
             </div>
+
+            {/* Keep this hidden but ensures travellerEmail isn't “unused” if your TS config is strict */}
+            <div style={{ display: "none" }}>{travellerEmail || ""}</div>
           </div>
         </div>
       )}

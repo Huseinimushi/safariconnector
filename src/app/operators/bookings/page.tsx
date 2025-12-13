@@ -1,10 +1,11 @@
 // src/app/operators/bookings/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { useBookingsSync } from "@/hooks/useBookingsSync";
 
 /* ---------- Types ---------- */
 
@@ -27,19 +28,28 @@ type BookingRow = {
   traveller_id: string | null;
   operator_id: string | null;
   quote_id: string | null;
+
+  // Booking lifecycle status:
+  // payment_submitted -> payment_verified -> confirmed (then maybe completed/cancelled)
   status: string | null;
+
   date_from: string | null;
   date_to: string | null;
   pax: number | null;
+
   total_amount: string | number | null;
   currency: string | null;
+
   commission_percentage: string | number | null;
   commission_amount: string | number | null;
   operator_receivable: string | number | null;
+
   payment_status: string | null;
   disbursement_status: string | null;
   payment_reference: string | null;
+
   meta: any;
+
   created_at: string | null;
   updated_at: string | null;
 };
@@ -99,16 +109,26 @@ const formatMoney = (
 const normaliseStatus = (status: string | null | undefined) =>
   (status || "pending").toLowerCase();
 
+/** Friendly label for booking.status */
 const statusLabel = (status: string | null | undefined) => {
   const s = normaliseStatus(status);
+
+  // Payment flow (Finance verifies)
+  if (s === "payment_submitted") return "Payment submitted";
+  if (s === "payment_verified") return "Payment verified";
+
+  // Operator / system flow
   if (s === "confirmed") return "Confirmed";
-  if (s === "cancelled") return "Cancelled";
   if (s === "completed") return "Completed";
+  if (s === "cancelled") return "Cancelled";
+
   return "Pending";
 };
 
 const statusStyles = (status: string | null | undefined) => {
   const s = normaliseStatus(status);
+
+  // Green: confirmed/completed
   if (s === "confirmed" || s === "completed") {
     return {
       bg: "#ECFDF5",
@@ -116,6 +136,24 @@ const statusStyles = (status: string | null | undefined) => {
       color: "#166534",
     };
   }
+
+  // Blue-ish: payment states
+  if (s === "payment_verified") {
+    return {
+      bg: "#EFF6FF",
+      border: "1px solid #BFDBFE",
+      color: "#1D4ED8",
+    };
+  }
+  if (s === "payment_submitted") {
+    return {
+      bg: "#F0FDFA",
+      border: "1px solid #99F6E4",
+      color: "#0F766E",
+    };
+  }
+
+  // Red: cancelled
   if (s === "cancelled") {
     return {
       bg: "#FEF2F2",
@@ -123,12 +161,17 @@ const statusStyles = (status: string | null | undefined) => {
       color: "#B91C1C",
     };
   }
+
+  // Amber: pending/other
   return {
     bg: "#FEF3C7",
     border: "1px solid #FDE68A",
     color: "#92400E",
   };
 };
+
+const isPaymentVerified = (status: string | null | undefined) =>
+  normaliseStatus(status) === "payment_verified";
 
 /* ---------- Component ---------- */
 
@@ -139,139 +182,147 @@ export default function OperatorBookingsPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const [operator, setOperator] = useState<OperatorRow | null>(null);
+  const [operatorId, setOperatorId] = useState<string | null>(null);
+
   const [bookings, setBookings] = useState<BookingRow[]>([]);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErrorMsg(null);
 
-    const load = async () => {
-      setLoading(true);
-      setErrorMsg(null);
+    try {
+      // 1) Auth
+      const { data: userResp, error: userErr } = await supabase.auth.getUser();
+      if (userErr || !userResp?.user) {
+        console.error("operator bookings auth error:", userErr);
+        setErrorMsg("Please log in as a tour operator.");
+        setOperator(null);
+        setOperatorId(null);
+        setBookings([]);
+        return;
+      }
 
-      try {
-        // 1) Auth
-        const { data: userResp, error: userErr } = await supabase.auth.getUser();
-        if (userErr || !userResp?.user) {
-          console.error("operator bookings auth error:", userErr);
-          if (!isMounted) return;
-          setErrorMsg("Please log in as a tour operator.");
-          setLoading(false);
-          return;
-        }
+      const user = userResp.user;
 
-        const user = userResp.user;
+      // 2) Operator profile (operators_view then operators)
+      let operatorRow: OperatorRow | null = null;
 
-        // 2) Operator profile (operators_view then operators)
-        let operatorRow: OperatorRow | null = null;
+      const { data: opViewRows, error: opViewErr } = await supabase
+        .from("operators_view")
+        .select("*")
+        .eq("user_id", user.id)
+        .limit(1);
 
-        const { data: opViewRows, error: opViewErr } = await supabase
-          .from("operators_view")
+      if (opViewErr) {
+        console.warn("operator bookings operators_view error:", opViewErr);
+      }
+
+      if (opViewRows && opViewRows.length > 0) {
+        operatorRow = opViewRows[0] as OperatorRow;
+      }
+
+      if (!operatorRow) {
+        const { data: opRows, error: opErr } = await supabase
+          .from("operators")
           .select("*")
           .eq("user_id", user.id)
           .limit(1);
 
-        if (opViewErr) {
-          console.warn("operator bookings operators_view error:", opViewErr);
+        if (opErr) {
+          console.warn("operator bookings operators fallback error:", opErr);
         }
-
-        if (opViewRows && opViewRows.length > 0) {
-          operatorRow = opViewRows[0] as OperatorRow;
+        if (opRows && opRows.length > 0) {
+          operatorRow = opRows[0] as OperatorRow;
         }
-
-        if (!operatorRow) {
-          const { data: opRows, error: opErr } = await supabase
-            .from("operators")
-            .select("*")
-            .eq("user_id", user.id)
-            .limit(1);
-
-          if (opErr) {
-            console.warn("operator bookings operators fallback error:", opErr);
-          }
-          if (opRows && opRows.length > 0) {
-            operatorRow = opRows[0] as OperatorRow;
-          }
-        }
-
-        const operatorId = pickOperatorId(operatorRow);
-
-        if (!operatorRow || !operatorId) {
-          if (!isMounted) return;
-          setOperator(null);
-          setErrorMsg(
-            "We couldn’t find your operator profile. Please contact support."
-          );
-          setLoading(false);
-          return;
-        }
-
-        if (!isMounted) return;
-        setOperator(operatorRow);
-
-        // 3) Load bookings for this operator
-        const { data: rows, error } = await supabase
-          .from("bookings")
-          .select(
-            [
-              "id",
-              "trip_id",
-              "traveller_id",
-              "operator_id",
-              "quote_id",
-              "status",
-              "date_from",
-              "date_to",
-              "pax",
-              "total_amount",
-              "currency",
-              "commission_percentage",
-              "commission_amount",
-              "operator_receivable",
-              "payment_status",
-              "disbursement_status",
-              "payment_reference",
-              "meta",
-              "created_at",
-              "updated_at",
-            ].join(", ")
-          )
-          .eq("operator_id", operatorId)
-          .order("created_at", { ascending: false });
-
-        if (error) {
-          console.error("operator bookings load error:", error);
-          if (!isMounted) return;
-          setErrorMsg("Could not load your bookings.");
-          setBookings([]);
-        } else if (isMounted) {
-          // ✅ FIX: Supabase generic typing mismatch -> cast via unknown
-          const safeRows = ((rows ?? []) as unknown) as BookingRow[];
-          setBookings(safeRows);
-        }
-      } catch (err: any) {
-        console.error("operator bookings exception:", err);
-        if (isMounted) {
-          setErrorMsg("Unexpected error while loading your bookings.");
-          setBookings([]);
-        }
-      } finally {
-        if (isMounted) setLoading(false);
       }
-    };
 
-    load();
+      const opId = pickOperatorId(operatorRow);
 
-    return () => {
-      isMounted = false;
-    };
+      if (!operatorRow || !opId) {
+        setOperator(null);
+        setOperatorId(null);
+        setBookings([]);
+        setErrorMsg(
+          "We couldn’t find your operator profile. Please contact support."
+        );
+        return;
+      }
+
+      setOperator(operatorRow);
+      setOperatorId(opId);
+
+      // 3) Load bookings for this operator
+      const { data: rows, error } = await supabase
+        .from("bookings")
+        .select(
+          [
+            "id",
+            "trip_id",
+            "traveller_id",
+            "operator_id",
+            "quote_id",
+            "status",
+            "date_from",
+            "date_to",
+            "pax",
+            "total_amount",
+            "currency",
+            "commission_percentage",
+            "commission_amount",
+            "operator_receivable",
+            "payment_status",
+            "disbursement_status",
+            "payment_reference",
+            "meta",
+            "created_at",
+            "updated_at",
+          ].join(", ")
+        )
+        .eq("operator_id", opId)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("operator bookings load error:", error);
+        setErrorMsg("Could not load your bookings.");
+        setBookings([]);
+      } else {
+        const safeRows = ((rows ?? []) as unknown) as BookingRow[];
+        setBookings(safeRows);
+      }
+    } catch (err: any) {
+      console.error("operator bookings exception:", err);
+      setErrorMsg("Unexpected error while loading your bookings.");
+      setBookings([]);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // ✅ Realtime/polling auto-refresh when Finance updates booking.status
+  useBookingsSync({
+    operatorId: operatorId || undefined,
+    enabled: !!operatorId,
+    onChange: () => {
+      // Re-fetch list when there is any booking update for this operator.
+      load();
+    },
+  });
 
   const totalBookings = bookings.length;
 
-  const pendingBookings = useMemo(
-    () => bookings.filter((b) => normaliseStatus(b.status) === "pending").length,
-    [bookings]
-  );
+  const pendingBookings = useMemo(() => {
+    // “Pending confirmation” here includes:
+    // - pending
+    // - payment_submitted
+    // - payment_verified (waiting operator confirm)
+    const pendingLike = new Set(["pending", "payment_submitted", "payment_verified"]);
+    return bookings.filter((b) => pendingLike.has(normaliseStatus(b.status))).length;
+  }, [bookings]);
 
   const confirmedBookings = useMemo(
     () =>
@@ -291,6 +342,44 @@ export default function OperatorBookingsPage() {
     (operator?.company_name as string) ||
     (operator?.name as string) ||
     "Safari operator";
+
+  const handleConfirm = useCallback(
+    async (bookingId: string) => {
+      if (!bookingId) return;
+
+      try {
+        setConfirmingId(bookingId);
+        setErrorMsg(null);
+
+        const res = await fetch("/api/operators/bookings/confirm", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ booking_id: bookingId }),
+        });
+
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error(j?.error || "Failed to confirm booking.");
+        }
+
+        // Optimistic UI: update locally
+        setBookings((prev) =>
+          prev.map((b) =>
+            b.id === bookingId ? { ...b, status: "confirmed" } : b
+          )
+        );
+
+        // Then refetch to ensure server is source of truth
+        await load();
+      } catch (e: any) {
+        console.error("confirm booking error:", e);
+        setErrorMsg(e?.message || "Failed to confirm booking.");
+      } finally {
+        setConfirmingId(null);
+      }
+    },
+    [load]
+  );
 
   /* ---------- Render ---------- */
 
@@ -342,27 +431,47 @@ export default function OperatorBookingsPage() {
               color: "#4B5563",
             }}
           >
-            View bookings generated from accepted quotes, track status and
-            payment progress.
+            View bookings generated from accepted quotes, track status and payment
+            progress.
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => router.push("/operators/dashboard")}
-          style={{
-            borderRadius: 999,
-            padding: "7px 14px",
-            border: "1px solid #D1D5DB",
-            backgroundColor: "#FFFFFF",
-            color: "#374151",
-            fontSize: 12,
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
-        >
-          Back to dashboard
-        </button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <button
+            type="button"
+            onClick={() => load()}
+            style={{
+              borderRadius: 999,
+              padding: "7px 14px",
+              border: "1px solid #D1D5DB",
+              backgroundColor: "#FFFFFF",
+              color: "#374151",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+            title="Refresh bookings"
+          >
+            Refresh
+          </button>
+
+          <button
+            type="button"
+            onClick={() => router.push("/operators/dashboard")}
+            style={{
+              borderRadius: 999,
+              padding: "7px 14px",
+              border: "1px solid #D1D5DB",
+              backgroundColor: "#FFFFFF",
+              color: "#374151",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Back to dashboard
+          </button>
+        </div>
       </section>
 
       {errorMsg && (
@@ -554,13 +663,7 @@ export default function OperatorBookingsPage() {
         </div>
 
         {loading ? (
-          <div
-            style={{
-              marginTop: 12,
-              fontSize: 13,
-              color: "#6B7280",
-            }}
-          >
+          <div style={{ marginTop: 12, fontSize: 13, color: "#6B7280" }}>
             Loading bookings...
           </div>
         ) : bookings.length === 0 ? (
@@ -575,8 +678,8 @@ export default function OperatorBookingsPage() {
               backgroundColor: "#F9FAFB",
             }}
           >
-            You don&apos;t have any bookings yet. When travellers accept a
-            quote, confirmed bookings will appear here.
+            You don&apos;t have any bookings yet. When travellers accept a quote,
+            bookings will appear here.
           </div>
         ) : (
           <div
@@ -598,6 +701,11 @@ export default function OperatorBookingsPage() {
                 if (p === "failed") return "Payment failed";
                 return b.payment_status;
               })();
+
+              const canConfirm =
+                isPaymentVerified(b.status) && confirmingId !== b.id;
+
+              const isConfirming = confirmingId === b.id;
 
               return (
                 <div
@@ -637,16 +745,12 @@ export default function OperatorBookingsPage() {
                         {statusLabel(b.status)}
                       </span>
                       {b.created_at && (
-                        <span
-                          style={{
-                            fontSize: 11,
-                            color: "#6B7280",
-                          }}
-                        >
+                        <span style={{ fontSize: 11, color: "#6B7280" }}>
                           Created {formatDateShort(b.created_at)}
                         </span>
                       )}
                     </div>
+
                     <div
                       style={{
                         fontSize: 13,
@@ -660,56 +764,39 @@ export default function OperatorBookingsPage() {
                           )}`
                         : "Dates to be confirmed"}
                     </div>
-                    <div
-                      style={{
-                        marginTop: 2,
-                        fontSize: 12,
-                        color: "#6B7280",
-                      }}
-                    >
+
+                    <div style={{ marginTop: 2, fontSize: 12, color: "#6B7280" }}>
                       Travellers {b.pax ?? "not specified"}
                     </div>
+
+                    {isPaymentVerified(b.status) && (
+                      <div
+                        style={{
+                          marginTop: 6,
+                          fontSize: 12,
+                          color: "#1D4ED8",
+                          fontWeight: 600,
+                        }}
+                      >
+                        Finance verified payment. You can confirm this booking.
+                      </div>
+                    )}
                   </div>
 
                   {/* Money summary */}
                   <div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "#6B7280",
-                      }}
-                    >
+                    <div style={{ fontSize: 12, color: "#6B7280" }}>
                       Total trip value
                     </div>
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 700,
-                        color: "#111827",
-                      }}
-                    >
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#111827" }}>
                       {formatMoney(b.total_amount, b.currency)}
                     </div>
-                    <div
-                      style={{
-                        marginTop: 4,
-                        fontSize: 12,
-                        color: "#6B7280",
-                      }}
-                    >
+                    <div style={{ marginTop: 4, fontSize: 12, color: "#6B7280" }}>
                       Operator receivable:{" "}
-                      <strong>
-                        {formatMoney(b.operator_receivable, b.currency)}
-                      </strong>
+                      <strong>{formatMoney(b.operator_receivable, b.currency)}</strong>
                     </div>
                     {b.commission_percentage && (
-                      <div
-                        style={{
-                          marginTop: 2,
-                          fontSize: 12,
-                          color: "#6B7280",
-                        }}
-                      >
+                      <div style={{ marginTop: 2, fontSize: 12, color: "#6B7280" }}>
                         Commission {b.commission_percentage}% (
                         {formatMoney(b.commission_amount, b.currency)})
                       </div>
@@ -725,15 +812,10 @@ export default function OperatorBookingsPage() {
                       gap: 6,
                     }}
                   >
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "#6B7280",
-                        textAlign: "right",
-                      }}
-                    >
+                    <div style={{ fontSize: 12, color: "#6B7280", textAlign: "right" }}>
                       Payment status: <strong>{paymentLabel}</strong>
                     </div>
+
                     {b.payment_reference && (
                       <div
                         style={{
@@ -758,9 +840,7 @@ export default function OperatorBookingsPage() {
                     >
                       {b.trip_id && (
                         <Link
-                          href={`/operators/trips/${encodeURIComponent(
-                            b.trip_id
-                          )}/edit`}
+                          href={`/operators/trips/${encodeURIComponent(b.trip_id)}/edit`}
                           style={{
                             padding: "5px 10px",
                             borderRadius: 999,
@@ -775,11 +855,10 @@ export default function OperatorBookingsPage() {
                           View trip
                         </Link>
                       )}
+
                       {b.quote_id && (
                         <Link
-                          href={`/operators/quotes?quote_id=${encodeURIComponent(
-                            b.quote_id
-                          )}`}
+                          href={`/operators/quotes?quote_id=${encodeURIComponent(b.quote_id)}`}
                           style={{
                             padding: "5px 10px",
                             borderRadius: 999,
@@ -793,6 +872,27 @@ export default function OperatorBookingsPage() {
                         >
                           View quote &amp; chat
                         </Link>
+                      )}
+
+                      {isPaymentVerified(b.status) && (
+                        <button
+                          type="button"
+                          onClick={() => handleConfirm(b.id)}
+                          disabled={!canConfirm || isConfirming}
+                          style={{
+                            padding: "5px 10px",
+                            borderRadius: 999,
+                            border: "none",
+                            backgroundColor: isConfirming ? "#9CA3AF" : "#1D4ED8",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            color: "#FFFFFF",
+                            cursor: isConfirming ? "not-allowed" : "pointer",
+                          }}
+                          title="Confirm this booking after Finance verifies payment"
+                        >
+                          {isConfirming ? "Confirming..." : "Confirm booking"}
+                        </button>
                       )}
                     </div>
                   </div>

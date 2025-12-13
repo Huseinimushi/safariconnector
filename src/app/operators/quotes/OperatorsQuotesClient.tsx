@@ -58,8 +58,13 @@ type BookingRow = {
   pax: number | null;
   total_amount: number | null;
   currency: string | null;
-  status: string | null; // pending_payment / confirmed / cancelled
-  payment_status: string | null; // unpaid / deposit_paid / paid_in_full
+
+  // UPDATED lifecycle statuses
+  status: string | null; // pending_payment / payment_submitted / payment_verified / confirmed / cancelled
+
+  // UPDATED payment statuses
+  payment_status: string | null; // unpaid / proof_submitted / deposit_paid / paid_in_full
+
   created_at: string | null;
 };
 
@@ -97,6 +102,10 @@ const bookingStatusLabel = (status?: string | null) => {
   switch (s) {
     case "pending_payment":
       return "Pending payment";
+    case "payment_submitted":
+      return "Payment submitted (unverified)";
+    case "payment_verified":
+      return "Payment verified";
     case "confirmed":
       return "Confirmed booking";
     case "cancelled":
@@ -111,6 +120,8 @@ const paymentStatusLabel = (status?: string | null) => {
   switch (s) {
     case "unpaid":
       return "Unpaid";
+    case "proof_submitted":
+      return "Proof submitted";
     case "deposit_paid":
       return "Deposit paid";
     case "paid_in_full":
@@ -119,6 +130,43 @@ const paymentStatusLabel = (status?: string | null) => {
       return s.charAt(0).toUpperCase() + s.slice(1);
   }
 };
+
+const bannerToneForBooking = (statusRaw: string) => {
+  switch (statusRaw) {
+    case "confirmed":
+      return { bg: "#ECFDF5", border: "1px solid #BBF7D0", color: "#166534" };
+    case "cancelled":
+      return { bg: "#FEF2F2", border: "1px solid #FECACA", color: "#B91C1C" };
+    case "payment_verified":
+      return { bg: "#EFF6FF", border: "1px solid #BFDBFE", color: "#1D4ED8" };
+    case "payment_submitted":
+      return { bg: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E" };
+    case "pending_payment":
+    default:
+      return { bg: "#F3F4F6", border: "1px solid #E5E7EB", color: "#4B5563" };
+  }
+};
+
+/** Client session -> access token (needed for server routes) */
+const getAccessToken = async (): Promise<string | null> => {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token || null;
+};
+
+/** Robust fetch parsing (avoids "{}" logs) */
+async function safeReadResponse(res: Response) {
+  const contentType = res.headers.get("content-type") || "";
+  if (contentType.toLowerCase().includes("application/json")) {
+    const json = await res.json().catch(() => null);
+    return { ok: res.ok, status: res.status, json, text: null as string | null, contentType };
+  }
+  const text = await res.text().catch(() => null);
+  let json: any = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {}
+  return { ok: res.ok, status: res.status, json, text, contentType };
+}
 
 /* ───────── Component ───────── */
 
@@ -152,6 +200,8 @@ export default function OperatorsQuotesClient() {
   const [paymentMsgError, setPaymentMsgError] = useState<string | null>(null);
   const [paymentMsgSuccess, setPaymentMsgSuccess] = useState<string | null>(null);
 
+  const [confirmingBooking, setConfirmingBooking] = useState(false);
+
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   /* ───────── Load operator + enquiries ───────── */
@@ -183,9 +233,8 @@ export default function OperatorsQuotesClient() {
           .eq("user_id", user.id)
           .maybeSingle();
 
-        if (opViewErr) {
-          console.warn("operators_view error:", opViewErr);
-        }
+        if (opViewErr) console.warn("operators_view error:", opViewErr);
+
         if (opView) {
           opRow = opView as OperatorRow;
         } else {
@@ -195,9 +244,7 @@ export default function OperatorsQuotesClient() {
             .eq("user_id", user.id)
             .maybeSingle();
 
-          if (opErr) {
-            console.warn("operators fallback error:", opErr);
-          }
+          if (opErr) console.warn("operators fallback error:", opErr);
           if (op) opRow = op as OperatorRow;
         }
 
@@ -241,9 +288,7 @@ export default function OperatorsQuotesClient() {
         }
         if (!initialId && list.length > 0) initialId = list[0].id;
 
-        if (initialId != null) {
-          setSelectedEnquiryId(initialId);
-        }
+        if (initialId != null) setSelectedEnquiryId(initialId);
       } catch (err) {
         console.error("operator quotes initial load exception:", err);
         if (isMounted) setErrorMsg("Unexpected error while loading your enquiries.");
@@ -412,6 +457,7 @@ export default function OperatorsQuotesClient() {
     setSelectedEnquiryId(id);
     setPaymentMsgError(null);
     setPaymentMsgSuccess(null);
+    setErrorMsg(null);
 
     const params = new URLSearchParams(searchParams?.toString() || "");
     params.set("enquiry_id", String(id));
@@ -442,9 +488,7 @@ export default function OperatorsQuotesClient() {
         return;
       }
 
-      if (data) {
-        setMessages((prev) => [...prev, data as MessageRow]);
-      }
+      if (data) setMessages((prev) => [...prev, data as MessageRow]);
     } catch (err) {
       console.error("operator send message exception:", err);
       setNewMessage(text);
@@ -453,14 +497,30 @@ export default function OperatorsQuotesClient() {
     }
   };
 
+  /**
+   * ✅ Save quote DIRECTLY via Supabase client
+   */
   const handleSaveQuote: React.FormEventHandler<HTMLFormElement> = async (e) => {
     e.preventDefault();
     if (!selectedEnquiryId || !operator || savingQuote) return;
 
-    const totalNum = quoteTotal ? Number(quoteTotal) : null;
-
     setSavingQuote(true);
     setErrorMsg(null);
+
+    // sanity check: ensure still authed
+    const { data: u, error: uErr } = await supabase.auth.getUser();
+    if (uErr || !u?.user) {
+      setErrorMsg("Not authenticated. Please log in again as operator.");
+      setSavingQuote(false);
+      return;
+    }
+
+    const totalNum = quoteTotal.trim() ? Number(quoteTotal) : null;
+    if (quoteTotal.trim() && (Number.isNaN(totalNum as any) || (totalNum as number) < 0)) {
+      setErrorMsg("Please enter a valid total price.");
+      setSavingQuote(false);
+      return;
+    }
 
     try {
       if (!quote) {
@@ -477,8 +537,14 @@ export default function OperatorsQuotesClient() {
           .single();
 
         if (error) {
-          console.error("operator create quote error:", error);
-          setErrorMsg("Could not send quote. Please try again.");
+          console.error("operator create quote error:", {
+            message: (error as any)?.message,
+            details: (error as any)?.details,
+            hint: (error as any)?.hint,
+            code: (error as any)?.code,
+            raw: error,
+          });
+          setErrorMsg((error as any)?.message || "Could not send quote. Please try again.");
         } else if (data) {
           setQuote(data as QuoteRow);
         }
@@ -495,8 +561,14 @@ export default function OperatorsQuotesClient() {
           .single();
 
         if (error) {
-          console.error("operator update quote error:", error);
-          setErrorMsg("Could not update quote. Please try again.");
+          console.error("operator update quote error:", {
+            message: (error as any)?.message,
+            details: (error as any)?.details,
+            hint: (error as any)?.hint,
+            code: (error as any)?.code,
+            raw: error,
+          });
+          setErrorMsg((error as any)?.message || "Could not update quote. Please try again.");
         } else if (data) {
           setQuote(data as QuoteRow);
         }
@@ -518,10 +590,8 @@ export default function OperatorsQuotesClient() {
 
     try {
       const refShort = booking.id.slice(0, 8).toUpperCase();
-
       const amountText =
         (booking.currency || quote?.currency || "USD") + " " + (booking.total_amount ?? quote?.total_price ?? "");
-
       const tripTitle = selectedEnquiry.trip_title || "your safari itinerary";
 
       const messageText = [
@@ -534,7 +604,7 @@ export default function OperatorsQuotesClient() {
         ``,
         `Please use this reference when making payment: ${refShort}.`,
         ``,
-        `Once we receive your payment, we'll mark your booking as confirmed and share your final travel documents.`,
+        `Once Safari Connector verifies the payment, the booking will be cleared for confirmation and we will share your final travel documents.`,
       ].join("\n");
 
       const { data, error } = await supabase
@@ -562,9 +632,81 @@ export default function OperatorsQuotesClient() {
     }
   };
 
+  /**
+   * ✅ Confirm booking via server API (with Bearer token)
+   */
+  const handleConfirmBooking = async () => {
+    if (!booking || !selectedEnquiry || confirmingBooking) return;
+
+    const statusRaw = (booking.status || "").toLowerCase();
+    if (statusRaw !== "payment_verified") {
+      setPaymentMsgError("You can only confirm after Safari Connector verifies payment.");
+      setPaymentMsgSuccess(null);
+      return;
+    }
+
+    setConfirmingBooking(true);
+    setPaymentMsgError(null);
+    setPaymentMsgSuccess(null);
+
+    try {
+      const token = await getAccessToken();
+      if (!token) {
+        setPaymentMsgError("Not authenticated. Please log in again.");
+        return;
+      }
+
+      const res = await fetch("/api/operators/bookings/confirm", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          booking_id: booking.id,
+          enquiry_id: selectedEnquiry.id,
+        }),
+      });
+
+      const parsed = await safeReadResponse(res);
+      const json = parsed.json;
+
+      if (!parsed.ok || !json?.ok) {
+        console.error("operator confirm booking API error:", {
+          status: parsed.status,
+          contentType: parsed.contentType,
+          json,
+          text: parsed.text,
+        });
+
+        if (parsed.status === 401) setPaymentMsgError("Not authenticated. Log out/in then try again.");
+        else if (parsed.status === 403) setPaymentMsgError("Forbidden. This booking is not assigned to your operator account.");
+        else setPaymentMsgError(json?.error || "Failed to confirm booking.");
+
+        setPaymentMsgSuccess(null);
+        return;
+      }
+
+      if (json.booking) setBooking(json.booking as BookingRow);
+      setPaymentMsgSuccess("Booking confirmed. Traveller notified.");
+      setPaymentMsgError(null);
+    } catch (err) {
+      console.error("operator confirm booking exception:", err);
+      setPaymentMsgError("Unexpected error while confirming booking.");
+      setPaymentMsgSuccess(null);
+    } finally {
+      setConfirmingBooking(false);
+    }
+  };
+
   /* ───────── Derived ───────── */
 
   const companyName = (operator?.company_name as string) || (operator?.name as string) || "Your safari company";
+
+  const bookingStatusRaw = (booking?.status || "pending_payment").toLowerCase();
+  const bookingTone = bannerToneForBooking(bookingStatusRaw);
+
+  const canConfirmBooking = bookingStatusRaw === "payment_verified";
 
   /* ───────── Render ───────── */
 
@@ -592,13 +734,12 @@ export default function OperatorsQuotesClient() {
           >
             Operator / Traveller enquiries
           </div>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#14532D" }}>
-            Enquiries & quotes
-          </h1>
+          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#14532D" }}>Enquiries & quotes</h1>
           <p style={{ margin: 0, marginTop: 4, fontSize: 14, color: "#4B5563" }}>
             Chat with travellers, send or update your quotes, and guide them to confirmed bookings.
           </p>
         </div>
+
         <Link
           href="/operators/dashboard"
           style={{
@@ -706,16 +847,13 @@ export default function OperatorsQuotesClient() {
                   >
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>
-                          {q.trip_title || "Safari enquiry"}
-                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{q.trip_title || "Safari enquiry"}</div>
                         <div style={{ fontSize: 12, color: "#6B7280" }}>
                           {q.name || "Traveller"} · {q.date ? `Preferred: ${formatDateShort(q.date)}` : "Dates flexible"}
                         </div>
-                        <div style={{ marginTop: 3, fontSize: 11, color: "#6B7280" }}>
-                          Travellers {q.pax ?? "not specified"}
-                        </div>
+                        <div style={{ marginTop: 3, fontSize: 11, color: "#6B7280" }}>Travellers {q.pax ?? "not specified"}</div>
                       </div>
+
                       <div style={{ textAlign: "right" }}>
                         <div style={{ marginBottom: 4 }}>
                           <span
@@ -743,7 +881,6 @@ export default function OperatorsQuotesClient() {
         </div>
 
         {/* RIGHT – chat + quote + booking */}
-        {/* (unchanged from your snippet) */}
         <div
           style={{
             borderRadius: 22,
@@ -755,17 +892,374 @@ export default function OperatorsQuotesClient() {
             flexDirection: "column",
           }}
         >
-          {/* --- The rest of your RIGHT panel stays exactly as you pasted --- */}
-          {/* For brevity in this message, keep the RIGHT side code exactly the same as your current file. */}
-          {/* If you want, paste the remaining part and I’ll return the full file in one piece. */}
           {!selectedEnquiry ? (
             <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "#6B7280" }}>
               Select an enquiry on the left to open the conversation.
             </div>
           ) : (
             <>
-              {/* Keep your existing RIGHT side JSX exactly as-is (booking banner, chat, quote form, composer) */}
-              {/* NOTE: Your pasted code already includes it; no further changes required for the suspense error. */}
+              {/* Header + booking banner + quote summary */}
+              <div
+                style={{
+                  marginBottom: 10,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "#111827", marginBottom: 2 }}>{selectedEnquiry.name || "Traveller"}</div>
+
+                  <div style={{ fontSize: 12, color: "#6B7280", marginBottom: 6 }}>
+                    Enquiry sent on {selectedEnquiry.created_at ? formatDateTime(selectedEnquiry.created_at) : "-"}
+                  </div>
+
+                  <div style={{ display: "flex", gap: 32, fontSize: 12, color: "#4B5563" }}>
+                    <div>
+                      <div style={{ textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 11, color: "#9CA3AF" }}>Preferred date</div>
+                      <div>{selectedEnquiry.date ? formatDateShort(selectedEnquiry.date) : "Flexible"}</div>
+                    </div>
+                    <div>
+                      <div style={{ textTransform: "uppercase", letterSpacing: "0.08em", fontSize: 11, color: "#9CA3AF" }}>Travellers</div>
+                      <div>{selectedEnquiry.pax ?? "Not specified"}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, maxWidth: 340 }}>
+                  {loadingBooking ? (
+                    <span style={{ padding: "4px 10px", borderRadius: 999, backgroundColor: "#F3F4F6", border: "1px solid #E5E7EB", fontSize: 11, color: "#4B5563" }}>
+                      Checking booking status…
+                    </span>
+                  ) : booking ? (
+                    <div
+                      style={{
+                        borderRadius: 14,
+                        padding: "8px 10px",
+                        backgroundColor: bookingTone.bg,
+                        border: bookingTone.border,
+                        fontSize: 12,
+                        color: bookingTone.color,
+                        width: "100%",
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, marginBottom: 4 }}>{bookingStatusLabel(booking.status)}</div>
+
+                      <div style={{ fontSize: 11, color: "#374151", marginBottom: 2 }}>
+                        Booking ref: <span style={{ fontFamily: "monospace" }}>{booking.id.slice(0, 8).toUpperCase()}</span>
+                      </div>
+
+                      <div style={{ fontSize: 11, color: "#374151", marginBottom: 2 }}>
+                        Amount: {booking.currency || quoteCurrency} {booking.total_amount ?? (quote ? quote.total_price ?? "-" : "-")}
+                      </div>
+
+                      <div style={{ fontSize: 11, color: "#4B5563" }}>
+                        Payment status: <strong>{paymentStatusLabel(booking.payment_status)}</strong>
+                      </div>
+
+                      <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/operators/bookings/${booking.id}`)}
+                          style={{
+                            borderRadius: 999,
+                            padding: "4px 10px",
+                            border: "1px solid #D1D5DB",
+                            backgroundColor: "#FFFFFF",
+                            color: "#374151",
+                            fontSize: 11,
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          View / update booking
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleSendPaymentInstructions}
+                          disabled={paymentMsgSending || !!paymentMsgSuccess || bookingStatusRaw === "confirmed" || bookingStatusRaw === "cancelled"}
+                          style={{
+                            borderRadius: 999,
+                            padding: "4px 10px",
+                            border: "none",
+                            backgroundColor: bookingStatusRaw === "confirmed" || bookingStatusRaw === "cancelled" ? "#9CA3AF" : "#14532D",
+                            color: "#FFFFFF",
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor:
+                              bookingStatusRaw === "confirmed" || bookingStatusRaw === "cancelled"
+                                ? "not-allowed"
+                                : paymentMsgSending
+                                ? "wait"
+                                : "pointer",
+                          }}
+                        >
+                          {paymentMsgSending ? "Sending…" : paymentMsgSuccess ? "Instructions sent" : "Share payment instructions"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleConfirmBooking}
+                          disabled={!canConfirmBooking || confirmingBooking}
+                          style={{
+                            borderRadius: 999,
+                            padding: "4px 10px",
+                            border: "none",
+                            backgroundColor: canConfirmBooking ? "#1D4ED8" : "#9CA3AF",
+                            color: "#FFFFFF",
+                            fontSize: 11,
+                            fontWeight: 800,
+                            cursor: !canConfirmBooking ? "not-allowed" : confirmingBooking ? "wait" : "pointer",
+                          }}
+                        >
+                          {confirmingBooking ? "Confirming…" : "Confirm booking"}
+                        </button>
+                      </div>
+
+                      {bookingStatusRaw === "payment_submitted" && (
+                        <div style={{ marginTop: 6, fontSize: 11, color: "#92400E" }}>
+                          Traveller submitted proof. Waiting for Safari Connector Finance verification.
+                        </div>
+                      )}
+
+                      {bookingStatusRaw === "pending_payment" && (
+                        <div style={{ marginTop: 6, fontSize: 11, color: "#4B5563" }}>
+                          Waiting for traveller to pay. They will submit proof, then Finance verifies.
+                        </div>
+                      )}
+
+                      {bookingStatusRaw === "payment_verified" && (
+                        <div style={{ marginTop: 6, fontSize: 11, color: "#1D4ED8" }}>
+                          Payment verified. You can now confirm the booking.
+                        </div>
+                      )}
+
+                      {paymentMsgError && <div style={{ marginTop: 6, fontSize: 11, color: "#B91C1C" }}>{paymentMsgError}</div>}
+                      {paymentMsgSuccess && <div style={{ marginTop: 6, fontSize: 11, color: "#065F46" }}>{paymentMsgSuccess}</div>}
+                    </div>
+                  ) : (
+                    <span style={{ padding: "4px 10px", borderRadius: 999, backgroundColor: "#F3F4F6", border: "1px solid #E5E7EB", fontSize: 11, color: "#4B5563" }}>
+                      No booking yet – once the traveller accepts your quote, we&apos;ll create a booking automatically.
+                    </span>
+                  )}
+
+                  <div style={{ fontSize: 11, color: "#6B7280", textAlign: "right" }}>
+                    {loadingQuote ? "Checking for quote…" : quote ? `Current quote: ${quote.currency || "USD"} ${quote.total_price ?? "-"}` : "No quote sent yet for this enquiry."}
+                  </div>
+                </div>
+              </div>
+
+              {/* Chat area */}
+              <div
+                style={{
+                  flex: 1,
+                  borderRadius: 18,
+                  border: "1px solid #E5E7EB",
+                  backgroundColor: "#F9FAFB",
+                  padding: 12,
+                  overflowY: "auto",
+                  maxHeight: 320,
+                }}
+              >
+                {selectedEnquiry.note && (
+                  <div style={{ marginBottom: 10 }}>
+                    <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 3 }}>Traveller’s original request</div>
+                    <div
+                      style={{
+                        backgroundColor: "#EFF6FF",
+                        borderRadius: 12,
+                        padding: 10,
+                        fontSize: 13,
+                        lineHeight: 1.5,
+                        border: "1px solid #BFDBFE",
+                        whiteSpace: "pre-line",
+                      }}
+                    >
+                      {selectedEnquiry.note}
+                    </div>
+                  </div>
+                )}
+
+                {loadingMessages ? (
+                  <div style={{ fontSize: 13, color: "#6B7280" }}>Loading messages…</div>
+                ) : messages.length === 0 ? (
+                  <div style={{ fontSize: 13, color: "#6B7280" }}>
+                    No messages yet. When you or the traveller send a message, the chat will appear here.
+                  </div>
+                ) : (
+                  messages.map((m) => {
+                    const isOperator = (m.sender_role || "operator").toLowerCase() === "operator";
+                    return (
+                      <div key={m.id} style={{ display: "flex", justifyContent: isOperator ? "flex-end" : "flex-start", marginTop: 8 }}>
+                        <div
+                          style={{
+                            maxWidth: "78%",
+                            borderRadius: 12,
+                            padding: 8,
+                            fontSize: 13,
+                            lineHeight: 1.5,
+                            backgroundColor: isOperator ? "#DCFCE7" : "#FFFFFF",
+                            border: isOperator ? "1px solid #A7F3D0" : "1px solid #E5E7EB",
+                          }}
+                        >
+                          <div style={{ fontSize: 11, fontWeight: 700, marginBottom: 2, color: "#6B7280" }}>
+                            {isOperator ? companyName : "Traveller"}
+                          </div>
+                          <div style={{ whiteSpace: "pre-line" }}>{m.message}</div>
+                          {m.created_at && (
+                            <div style={{ marginTop: 3, fontSize: 10, color: "#9CA3AF", textAlign: "right" }}>
+                              {formatDateTime(m.created_at)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Quote form */}
+              <form
+                onSubmit={handleSaveQuote}
+                style={{
+                  marginTop: 10,
+                  borderRadius: 16,
+                  border: "1px solid #E5E7EB",
+                  padding: 10,
+                  backgroundColor: "#FFFFFF",
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr)",
+                  gap: 8,
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 800, color: "#111827" }}>Send or update your quote</div>
+
+                <div style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 13 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9CA3AF", marginBottom: 2 }}>
+                      Currency
+                    </div>
+                    <select
+                      value={quoteCurrency}
+                      onChange={(e) => setQuoteCurrency(e.target.value)}
+                      style={{
+                        width: "100%",
+                        borderRadius: 10,
+                        border: "1px solid #D1D5DB",
+                        padding: "6px 9px",
+                        fontSize: 13,
+                        outline: "none",
+                      }}
+                    >
+                      <option value="USD">USD</option>
+                      <option value="EUR">EUR</option>
+                      <option value="GBP">GBP</option>
+                    </select>
+                  </div>
+
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9CA3AF", marginBottom: 2 }}>
+                      Total price (for the trip)
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      value={quoteTotal}
+                      onChange={(e) => setQuoteTotal(e.target.value)}
+                      style={{
+                        width: "100%",
+                        borderRadius: 10,
+                        border: "1px solid #D1D5DB",
+                        padding: "6px 9px",
+                        fontSize: 13,
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em", color: "#9CA3AF", marginBottom: 2 }}>
+                    Notes (what&apos;s included, exclusions, payment terms, etc.)
+                  </div>
+                  <textarea
+                    value={quoteNotes}
+                    onChange={(e) => setQuoteNotes(e.target.value)}
+                    rows={3}
+                    style={{
+                      width: "100%",
+                      borderRadius: 10,
+                      border: "1px solid #D1D5DB",
+                      padding: "6px 9px",
+                      fontSize: 13,
+                      outline: "none",
+                      resize: "vertical",
+                    }}
+                  />
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 4 }}>
+                  <button
+                    type="submit"
+                    disabled={savingQuote}
+                    style={{
+                      borderRadius: 999,
+                      padding: "7px 14px",
+                      border: "none",
+                      backgroundColor: savingQuote ? "#9CA3AF" : "#14532D",
+                      color: "#FFFFFF",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      cursor: savingQuote ? "wait" : "pointer",
+                    }}
+                  >
+                    {savingQuote ? "Saving quote…" : quote ? "Update quote" : "Send quote"}
+                  </button>
+                </div>
+              </form>
+
+              {/* Message composer */}
+              <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                <input
+                  type="text"
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  placeholder="Write a message to the traveller…"
+                  style={{
+                    flex: 1,
+                    borderRadius: 999,
+                    border: "1px solid #D1D5DB",
+                    padding: "8px 12px",
+                    fontSize: 13,
+                    outline: "none",
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleSendMessage}
+                  disabled={!newMessage.trim() || sendingMessage}
+                  style={{
+                    borderRadius: 999,
+                    padding: "8px 16px",
+                    backgroundColor: newMessage.trim() ? "#14532D" : "#9CA3AF",
+                    color: "#FFFFFF",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    border: "none",
+                    cursor: newMessage.trim() ? (sendingMessage ? "wait" : "pointer") : "not-allowed",
+                  }}
+                >
+                  Send
+                </button>
+              </div>
             </>
           )}
         </div>
