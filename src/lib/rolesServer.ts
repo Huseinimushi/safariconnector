@@ -1,36 +1,39 @@
 // src/lib/rolesServer.ts
-import { requireUser } from "@/lib/authServer";
+import { supabaseServer } from "@/lib/supabaseServer";
 
 export type AppRole = "admin" | "operator" | "traveller";
 
 export async function getUserRole(): Promise<AppRole | null> {
-  try {
-    const { user, supabase } = await requireUser();
+  const supabase = await supabaseServer();
 
-    // Option A: role from profiles table (preferred)
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("user_id", user.id)
-      .maybeSingle();
+  const { data } = await supabase.auth.getUser();
+  const user = data?.user;
 
-    if (error) return null;
+  if (!user) return null;
 
-    const r = String(data?.role || "").toLowerCase();
-    if (r === "admin" || r === "operator" || r === "traveller") return r;
+  // OPTION A: role from user_metadata
+  const metaRole =
+    (user.user_metadata?.role as string | undefined) ||
+    (user.app_metadata?.role as string | undefined);
 
-    // Option B fallback: from user metadata
-    const metaRole =
-      (user.user_metadata?.role as string | undefined) ||
-      (user.app_metadata?.role as string | undefined) ||
-      "";
-
-    const mr = metaRole.toLowerCase();
-    if (mr === "admin" || mr === "operator" || mr === "traveller") return mr;
-
-    return null;
-  } catch {
-    // covers Not authenticated (requireUser throws)
-    return null;
+  if (metaRole === "admin" || metaRole === "operator" || metaRole === "traveller") {
+    return metaRole;
   }
+
+  // OPTION B (optional): role from profiles table
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (
+    profile?.role === "admin" ||
+    profile?.role === "operator" ||
+    profile?.role === "traveller"
+  ) {
+    return profile.role;
+  }
+
+  return null;
 }
