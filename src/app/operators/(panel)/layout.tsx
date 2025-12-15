@@ -1,24 +1,20 @@
-// src/app/admin/(panel)/layout.tsx
+// src/app/operators/(panel)/layout.tsx
 import { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { getUserRole } from "@/lib/rolesServer";
 
-export default async function AdminPanelLayout({
+export default async function OperatorPanelLayout({
   children,
 }: {
   children: ReactNode;
 }) {
   const role = await getUserRole();
 
-  if (role !== "admin") {
+  if (role !== "operator") {
     const host = (await headers()).get("host")?.toLowerCase() || "";
-
-    // On admin subdomain -> clean URL
-    if (host.startsWith("admin.")) redirect("/login");
-
-    // Fallback (root domain / local dev without host header cases)
-    redirect("/admin/login");
+    if (host.startsWith("operator.")) redirect("/login");
+    redirect("/operators/login");
   }
 
   return <>{children}</>;

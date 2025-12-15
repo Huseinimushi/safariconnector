@@ -3,62 +3,62 @@ import { NextRequest, NextResponse } from "next/server";
 
 export function proxy(req: NextRequest) {
   const url = req.nextUrl;
-  const hostname = req.headers.get("host") || "";
-  const host = hostname.split(":")[0].toLowerCase();
+  const hostHeader = req.headers.get("host") || "";
+  const host = hostHeader.split(":")[0].toLowerCase();
 
   const isAdminHost = host.startsWith("admin.");
   const isOperatorHost = host.startsWith("operator.");
 
   const p = url.pathname;
 
-  // ADMIN subdomain: clean URLs (no /admin in browser)
+  // ADMIN subdomain: user-facing URLs should NOT include /admin
   if (isAdminHost) {
-    // If user hits /admin/*, redirect to clean path
+    // Normalize accidental /admin/* to clean path
     if (p.startsWith("/admin")) {
       const clean = p.replace(/^\/admin/, "") || "/";
       url.pathname = clean;
       return NextResponse.redirect(url);
     }
 
-    // Default route on admin subdomain
-    if (p === "/") {
-      url.pathname = "/admin";
-      return NextResponse.rewrite(url);
-    }
-
-    // Clean login route
+    // Clean login URL
     if (p === "/login") {
       url.pathname = "/admin/login";
       return NextResponse.rewrite(url);
     }
 
-    // Everything else maps to /admin/*
+    // Default admin landing
+    if (p === "/") {
+      url.pathname = "/admin";
+      return NextResponse.rewrite(url);
+    }
+
+    // Everything else -> /admin/*
     url.pathname = `/admin${p}`;
     return NextResponse.rewrite(url);
   }
 
-  // OPERATOR subdomain: clean URLs (no /operators in browser)
+  // OPERATOR subdomain: user-facing URLs should NOT include /operators
   if (isOperatorHost) {
-    // If user hits /operators/*, redirect to clean path
+    // Normalize accidental /operators/* to clean path
     if (p.startsWith("/operators")) {
       const clean = p.replace(/^\/operators/, "") || "/";
       url.pathname = clean;
       return NextResponse.redirect(url);
     }
 
-    // Default route on operator subdomain
-    if (p === "/") {
-      url.pathname = "/operators";
-      return NextResponse.rewrite(url);
-    }
-
-    // Clean login route
+    // Clean login URL
     if (p === "/login") {
       url.pathname = "/operators/login";
       return NextResponse.rewrite(url);
     }
 
-    // Everything else maps to /operators/*
+    // Default operator landing
+    if (p === "/") {
+      url.pathname = "/operators";
+      return NextResponse.rewrite(url);
+    }
+
+    // Everything else -> /operators/*
     url.pathname = `/operators${p}`;
     return NextResponse.rewrite(url);
   }
