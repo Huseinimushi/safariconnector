@@ -1,29 +1,30 @@
-import { NextResponse } from "next/server";
-import { supabaseServer } from "@/lib/supabaseServer";
-
+// src/app/api/trips/route.ts
+export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const q = searchParams.get("q") || "";
-  const minDays = Number(searchParams.get("minDays") || 0);
-  const maxDays = Number(searchParams.get("maxDays") || 999);
-  const style = searchParams.get("style") || "";
+import { NextRequest, NextResponse } from "next/server";
+import { supabaseServer } from "@/lib/supabaseServer";
 
-  const supabase = supabaseServer();
+export async function GET(_req: NextRequest) {
+  try {
+    // ✅ FIX: must await
+    const supabase = await supabaseServer();
 
-  // Select the columns you actually have. (Add more later: parks, images, price_from, etc.)
-  let query = supabase
-    .from("trips")
-    .select("id,title,description,duration,parks,style,price_from,price_to,images,status,operator_id");
+    const { data, error } = await supabase
+      .from("trips")
+      .select(
+        "id,title,description,duration,parks,style,price_from,price_to,images,country,rating,reviews,best_months,overview,highlights,includes,excludes,status,operator_id"
+      )
+      .order("created_at", { ascending: false });
 
-  if (q) query = query.or(`title.ilike.%${q}%,description.ilike.%${q}%`);
-  if (minDays > 0) query = query.gte("duration", minDays);
-  if (maxDays < 999) query = query.lte("duration", maxDays);
-  if (style) query = query.eq("style", style);
+    if (error) {
+      console.error("trips fetch error:", error);
+      return NextResponse.json({ error: "Failed to load trips" }, { status: 500 });
+    }
 
-  const { data, error } = await query.order("title", { ascending: true }).limit(100);
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ trips: data ?? [] });
+    return NextResponse.json(data ?? [], { status: 200 });
+  } catch (e: any) {
+    console.error("GET /api/trips unexpected:", e);
+    return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
+  }
 }

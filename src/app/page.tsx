@@ -1,4 +1,3 @@
-// src/app/page.tsx
 import Image from "next/image";
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabaseServer";
@@ -40,15 +39,14 @@ const isRemoteUrl = (src: string | null | undefined) =>
   !!src && (src.startsWith("http://") || src.startsWith("https://"));
 
 export default async function HomePage() {
-  const supabase = supabaseServer();
+  // ✅ FIX: supabaseServer() returns Promise<SupabaseClient> → must await
+  const supabase = await supabaseServer();
 
   // Pull data (trips, top approved operators, total approved operators count)
   const [tripsRes, opsRes, opsCountRes] = await Promise.all([
     supabase
       .from("trips_view")
-      .select(
-        "id,title,duration,parks,price_from,price_to,hero_url,created_at"
-      )
+      .select("id,title,duration,parks,price_from,price_to,hero_url,created_at")
       .order("created_at", { ascending: false })
       .limit(12),
     supabase
@@ -342,11 +340,7 @@ export default async function HomePage() {
         ) : (
           <div className="home-grid-trips">
             {trips.slice(0, 4).map((t, index) => (
-              <TripCard
-                key={t.id}
-                trip={t}
-                highlight={index === 0} // first card as 'Safari of the week'
-              />
+              <TripCard key={t.id} trip={t} highlight={index === 0} />
             ))}
           </div>
         )}
@@ -372,13 +366,7 @@ export default async function HomePage() {
           >
             How Safari Connector Works
           </h2>
-          <p
-            style={{
-              marginTop: 4,
-              fontSize: 13,
-              color: "#6B7280",
-            }}
-          >
+          <p style={{ marginTop: 4, fontSize: 13, color: "#6B7280" }}>
             Simple, transparent, and built around local Tanzanian & African
             experts.
           </p>
@@ -411,7 +399,6 @@ export default async function HomePage() {
             subtitle="Featured partners trusted by Safari Connector."
             href="/operators"
           />
-
           <div className="home-grid-ops">
             {operators.slice(0, 3).map((op) => (
               <OperatorCard key={op.id} op={op} />
@@ -461,24 +448,11 @@ function HeaderRow({
       }}
     >
       <div>
-        <h2
-          style={{
-            margin: 0,
-            fontSize: 22,
-            fontWeight: 900,
-            color: "#0b2e24",
-          }}
-        >
+        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: "#0b2e24" }}>
           {title}
         </h2>
         {subtitle && (
-          <p
-            style={{
-              margin: "4px 0 0",
-              fontSize: 13,
-              color: "#6B7280",
-            }}
-          >
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: "#6B7280" }}>
             {subtitle}
           </p>
         )}
@@ -522,10 +496,7 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
   const remote = isRemoteUrl(imgSrc);
 
   return (
-    <Link
-      href={`/trips/${trip.id}`}
-      style={{ textDecoration: "none", color: "inherit" }}
-    >
+    <Link href={`/trips/${trip.id}`} style={{ textDecoration: "none", color: "inherit" }}>
       <div
         style={{
           border: highlight ? "2px solid #0B7A53" : "1px solid #E5E7EB",
@@ -542,32 +513,16 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
           transition: "transform 0.15s ease, box-shadow 0.15s ease",
         }}
       >
-        <div
-          style={{
-            position: "relative",
-            height: 160,
-            background: "#F3F4F6",
-          }}
-        >
+        <div style={{ position: "relative", height: 160, background: "#F3F4F6" }}>
           {imgSrc &&
             (remote ? (
               <img
                 src={imgSrc}
                 alt={trip.title}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                  display: "block",
-                }}
+                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
               />
             ) : (
-              <Image
-                src={imgSrc}
-                alt={trip.title}
-                fill
-                className="object-cover"
-              />
+              <Image src={imgSrc} alt={trip.title} fill className="object-cover" />
             ))}
 
           {highlight && (
@@ -590,14 +545,7 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
         </div>
 
         <div style={{ padding: 12, flexGrow: 1 }}>
-          <div
-            style={{
-              fontWeight: 800,
-              fontSize: 16,
-              color: "#111827",
-              lineHeight: 1.3,
-            }}
-          >
+          <div style={{ fontWeight: 800, fontSize: 16, color: "#111827", lineHeight: 1.3 }}>
             {trip.title}
           </div>
           <div
@@ -639,9 +587,7 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
               ? `From $${Number(trip.price_from).toLocaleString()}`
               : "Price on request"}
           </div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#0B7A53" }}>
-            View →
-          </div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#0B7A53" }}>View →</div>
         </div>
       </div>
     </Link>
@@ -650,10 +596,7 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
 
 function DestinationCard({ name, img }: { name: string; img?: string }) {
   return (
-    <Link
-      href={`/trips?park=${encodeURIComponent(name)}`}
-      style={{ textDecoration: "none", color: "inherit" }}
-    >
+    <Link href={`/trips?park=${encodeURIComponent(name)}`} style={{ textDecoration: "none", color: "inherit" }}>
       <div
         style={{
           border: "1px solid #E5E7EB",
@@ -665,15 +608,12 @@ function DestinationCard({ name, img }: { name: string; img?: string }) {
         }}
       >
         <div style={{ position: "relative", height: "100%" }}>
-          {img && (
-            <Image src={img} alt={name} fill className="object-cover" />
-          )}
+          {img && <Image src={img} alt={name} fill className="object-cover" />}
           <div
             style={{
               position: "absolute",
               inset: 0,
-              background:
-                "linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.55))",
+              background: "linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.55))",
             }}
           />
           <div
@@ -700,18 +640,12 @@ function OperatorCard({ op }: { op: OperatorRow }) {
     (op.status || "").toLowerCase() === "approved" ||
     (op.status || "").toLowerCase() === "live";
 
-  const statusLabel = isApproved
-    ? "Approved operator"
-    : (op.status || "Pending").toString();
-
+  const statusLabel = isApproved ? "Approved operator" : (op.status || "Pending").toString();
   const statusColor = isApproved ? "#166534" : "#92400E";
   const statusBg = isApproved ? "#ECFDF3" : "#FEF3C7";
 
   return (
-    <Link
-      href={`/operators/${op.id}`}
-      style={{ textDecoration: "none", color: "inherit" }}
-    >
+    <Link href={`/operators/${op.id}`} style={{ textDecoration: "none", color: "inherit" }}>
       <div
         style={{
           border: "1px solid #E5E7EB",
@@ -726,31 +660,12 @@ function OperatorCard({ op }: { op: OperatorRow }) {
           padding: 14,
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: 8,
-          }}
-        >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
           <div>
-            <div
-              style={{
-                fontSize: 16,
-                fontWeight: 900,
-                color: "#111827",
-              }}
-            >
+            <div style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>
               {op.company_name || "Safari operator"}
             </div>
-            <div
-              style={{
-                marginTop: 4,
-                fontSize: 12,
-                color: "#6B7280",
-              }}
-            >
+            <div style={{ marginTop: 4, fontSize: 12, color: "#6B7280" }}>
               {op.location || op.country || "Location not set"}
             </div>
           </div>
@@ -770,13 +685,7 @@ function OperatorCard({ op }: { op: OperatorRow }) {
           </span>
         </div>
 
-        <p
-          style={{
-            marginTop: 10,
-            fontSize: 12,
-            color: "#4B5563",
-          }}
-        >
+        <p style={{ marginTop: 10, fontSize: 12, color: "#4B5563" }}>
           Verified local partner on Safari Connector. Manage trips, quotes and
           bookings via your operator dashboard.
         </p>
@@ -785,15 +694,7 @@ function OperatorCard({ op }: { op: OperatorRow }) {
   );
 }
 
-function StepCard({
-  step,
-  title,
-  text,
-}: {
-  step: string;
-  title: string;
-  text: string;
-}) {
+function StepCard({ step, title, text }: { step: string; title: string; text: string }) {
   return (
     <div
       style={{
@@ -815,14 +716,7 @@ function StepCard({
       >
         Step {step}
       </div>
-      <div
-        style={{
-          fontSize: 15,
-          fontWeight: 800,
-          color: "#111827",
-          marginBottom: 4,
-        }}
-      >
+      <div style={{ fontSize: 15, fontWeight: 800, color: "#111827", marginBottom: 4 }}>
         {title}
       </div>
       <div style={{ fontSize: 13, color: "#4B5563" }}>{text}</div>
@@ -840,14 +734,7 @@ function TrustItem({ title, text }: { title: string; text: string }) {
         padding: 12,
       }}
     >
-      <div
-        style={{
-          fontWeight: 800,
-          color: "#111827",
-          marginBottom: 6,
-          fontSize: 14,
-        }}
-      >
+      <div style={{ fontWeight: 800, color: "#111827", marginBottom: 6, fontSize: 14 }}>
         {title}
       </div>
       <div style={{ color: "#374151", fontSize: 13 }}>{text}</div>

@@ -32,8 +32,6 @@ type TripRow = {
 
 export default function OperatorProfileClient({ id }: { id: string }) {
   const router = useRouter();
-  // 👉 TUNATUMIA HII MOJA KWA MOJA, HAKUNA supabaseBrowser TENA
-  // const supabase = useMemo(() => supabaseBrowser(), []); ❌
   const [operator, setOperator] = useState<OperatorRow | null>(null);
   const [trips, setTrips] = useState<TripRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -42,23 +40,23 @@ export default function OperatorProfileClient({ id }: { id: string }) {
     const loadData = async () => {
       setLoading(true);
 
-      const [{ data: op, error: opError }, { data: tripData, error: tripError }] =
-        await Promise.all([
-          supabase
-            .from("operators")
-            .select(
-              "id, company_name, name, logo_url, country, location, description, specialties, status"
-            )
-            .eq("id", id)
-            .single(),
-          supabase
-            .from("trips")
-            .select(
-              "id, title, slug, duration_days, style, price_from, price_to"
-            )
-            .eq("operator_id", id)
-            .order("created_at", { ascending: false }),
-        ]);
+      const [
+        { data: op, error: opError },
+        { data: tripData, error: tripError },
+      ] = await Promise.all([
+        supabase
+          .from("operators")
+          .select(
+            "id, company_name, name, logo_url, country, location, description, specialties, status"
+          )
+          .eq("id", id)
+          .single(),
+        supabase
+          .from("trips")
+          .select("id, title, slug, duration_days, style, price_from, price_to")
+          .eq("operator_id", id)
+          .order("created_at", { ascending: false }),
+      ]);
 
       if (opError) {
         console.error("Operator load error:", opError);
@@ -75,13 +73,10 @@ export default function OperatorProfileClient({ id }: { id: string }) {
       setLoading(false);
     };
 
-    if (id) {
-      loadData();
-    }
+    if (id) loadData();
   }, [id]);
 
   const handleAddTrip = () => {
-    // unaweza kubadilisha route hii kulingana na structure yako
     router.push(`/operators/trips/new?operatorId=${id}`);
   };
 
@@ -121,13 +116,7 @@ export default function OperatorProfileClient({ id }: { id: string }) {
 
   return (
     <div style={{ backgroundColor: BG_SAND, minHeight: "100vh" }}>
-      <main
-        style={{
-          maxWidth: 1120,
-          margin: "0 auto",
-          padding: "24px 16px 64px",
-        }}
-      >
+      <main style={{ maxWidth: 1120, margin: "0 auto", padding: "24px 16px 64px" }}>
         {/* HEADER */}
         <section
           style={{
@@ -176,36 +165,15 @@ export default function OperatorProfileClient({ id }: { id: string }) {
             )}
 
             <div>
-              <h1
-                style={{
-                  margin: 0,
-                  fontSize: 20,
-                  fontWeight: 800,
-                  color: BRAND_GREEN,
-                }}
-              >
+              <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: BRAND_GREEN }}>
                 {operator.company_name || operator.name}
               </h1>
-              <p
-                style={{
-                  margin: 0,
-                  marginTop: 4,
-                  fontSize: 13,
-                  color: "#4B5563",
-                }}
-              >
-                {operator.location || "—"},{" "}
-                {operator.country || ""}
+              <p style={{ margin: 0, marginTop: 4, fontSize: 13, color: "#4B5563" }}>
+                {operator.location || "—"}, {operator.country || ""}
               </p>
+
               {operator.specialties && operator.specialties.length > 0 && (
-                <p
-                  style={{
-                    margin: 0,
-                    marginTop: 4,
-                    fontSize: 11,
-                    color: "#6B7280",
-                  }}
-                >
+                <p style={{ margin: 0, marginTop: 4, fontSize: 11, color: "#6B7280" }}>
                   Specialties: {operator.specialties.join(" · ")}
                 </p>
               )}
@@ -279,27 +247,11 @@ export default function OperatorProfileClient({ id }: { id: string }) {
               padding: "14px 14px 12px",
             }}
           >
-            <h2
-              style={{
-                margin: 0,
-                marginBottom: 6,
-                fontSize: 15,
-                fontWeight: 700,
-                color: "#111827",
-              }}
-            >
+            <h2 style={{ margin: 0, marginBottom: 6, fontSize: 15, fontWeight: 700, color: "#111827" }}>
               About this operator
             </h2>
-            <p
-              style={{
-                margin: 0,
-                fontSize: 13,
-                color: "#4B5563",
-                lineHeight: 1.7,
-              }}
-            >
-              {operator.description ||
-                "This operator has not added a full company story yet."}
+            <p style={{ margin: 0, fontSize: 13, color: "#4B5563", lineHeight: 1.7 }}>
+              {operator.description || "This operator has not added a full company story yet."}
             </p>
           </div>
 
@@ -311,39 +263,16 @@ export default function OperatorProfileClient({ id }: { id: string }) {
               padding: "14px 14px 10px",
             }}
           >
-            <h2
-              style={{
-                margin: 0,
-                marginBottom: 6,
-                fontSize: 15,
-                fontWeight: 700,
-                color: "#111827",
-              }}
-            >
+            <h2 style={{ margin: 0, marginBottom: 6, fontSize: 15, fontWeight: 700, color: "#111827" }}>
               Trips by this operator
             </h2>
 
             {trips.length === 0 ? (
-              <p
-                style={{
-                  margin: 0,
-                  marginTop: 6,
-                  fontSize: 13,
-                  color: "#6B7280",
-                }}
-              >
-                No trips have been created yet. Use the &quot;Add new trip&quot;
-                button above to create your first itinerary.
+              <p style={{ margin: 0, marginTop: 6, fontSize: 13, color: "#6B7280" }}>
+                No trips have been created yet. Use the &quot;Add new trip&quot; button above to create your first itinerary.
               </p>
             ) : (
-              <div
-                style={{
-                  marginTop: 8,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
-                }}
-              >
+              <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
                 {trips.map((trip) => (
                   <div
                     key={trip.id}
@@ -358,53 +287,27 @@ export default function OperatorProfileClient({ id }: { id: string }) {
                     }}
                   >
                     <div>
-                      <div
-                        style={{
-                          fontWeight: 600,
-                          color: "#111827",
-                        }}
-                      >
+                      <div style={{ fontWeight: 600, color: "#111827" }}>
                         {trip.title || "Untitled trip"}
                       </div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          color: "#6B7280",
-                          marginTop: 2,
-                        }}
-                      >
-                        {trip.duration_days
-                          ? `${trip.duration_days} days`
-                          : "Duration not set"}{" "}
-                        · {trip.style || "Style not set"}
+                      <div style={{ fontSize: 11, color: "#6B7280", marginTop: 2 }}>
+                        {trip.duration_days ? `${trip.duration_days} days` : "Duration not set"} ·{" "}
+                        {trip.style || "Style not set"}
                       </div>
                     </div>
+
                     <div style={{ textAlign: "right" }}>
                       {trip.price_from ? (
-                        <div
-                          style={{
-                            fontSize: 12,
-                            fontWeight: 600,
-                            color: BRAND_GREEN,
-                          }}
-                        >
+                        <div style={{ fontSize: 12, fontWeight: 600, color: BRAND_GREEN }}>
                           From ${trip.price_from.toLocaleString()}
                         </div>
                       ) : (
-                        <div
-                          style={{
-                            fontSize: 11,
-                            color: "#6B7280",
-                          }}
-                        >
-                          Price on request
-                        </div>
+                        <div style={{ fontSize: 11, color: "#6B7280" }}>Price on request</div>
                       )}
+
                       <button
                         type="button"
-                        onClick={() =>
-                          router.push(`/trips/${trip.id}`)
-                        }
+                        onClick={() => router.push(`/trips/${trip.id}`)}
                         style={{
                           marginTop: 4,
                           border: "none",

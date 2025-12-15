@@ -1,4 +1,3 @@
-// src/app/operator/leads/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -34,7 +33,6 @@ export default function OperatorLeadsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Quote form state
   const [openFor, setOpenFor] = useState<string | null>(null);
   const [price, setPrice] = useState<string>("");
   const [currency, setCurrency] = useState("USD");
@@ -45,21 +43,19 @@ export default function OperatorLeadsPage() {
     "30% deposit to confirm, balance 30 days before arrival."
   );
 
-  // 1) Load session + role
   useEffect(() => {
     (async () => {
-      const supa = supabaseBrowser();
-      const { data: { session } } = await supa.auth.getSession();
+      const supa = supabaseBrowser;
+
+      const {
+        data: { session },
+      } = await supa.auth.getSession();
+
       const uid = session?.user?.id ?? null;
       setOperatorId(uid);
 
-      // fetch role from profiles (RLS: user can read own profile)
       if (uid) {
-        const { data } = await supa
-          .from("profiles")
-          .select("role")
-          .eq("id", uid)
-          .single();
+        const { data } = await supa.from("profiles").select("role").eq("id", uid).single();
         setRole((data?.role as any) ?? "client");
       }
 
@@ -67,7 +63,6 @@ export default function OperatorLeadsPage() {
     })();
   }, []);
 
-  // 2) Load leads (server infers operator from session)
   const reload = async () => {
     setLoading(true);
     setError(null);
@@ -101,6 +96,7 @@ export default function OperatorLeadsPage() {
     try {
       if (!leadId) throw new Error("No lead selected");
       if (!operatorId) throw new Error("Not authenticated");
+
       const total = Number(price);
       if (!Number.isFinite(total) || total <= 0) {
         throw new Error("Enter a valid total price (number)");
@@ -108,7 +104,6 @@ export default function OperatorLeadsPage() {
 
       const payload = {
         lead_id: leadId,
-        // operator_id omitted: server uses session user
         total_price: total,
         currency,
         inclusions: parseList(inclusions),
@@ -139,8 +134,6 @@ export default function OperatorLeadsPage() {
     }
   };
 
-  // ---------- Render ----------
-
   if (checkingAuth) {
     return (
       <main className="max-w-6xl mx-auto p-6">
@@ -153,7 +146,11 @@ export default function OperatorLeadsPage() {
     return (
       <main className="max-w-6xl mx-auto p-6">
         <p>
-          Please <a href="/auth/login" className="underline">log in</a> to access Operator Leads.
+          Please{" "}
+          <a href="/auth/login" className="underline">
+            log in
+          </a>{" "}
+          to access Operator Leads.
         </p>
       </main>
     );
@@ -163,7 +160,8 @@ export default function OperatorLeadsPage() {
     return (
       <main className="max-w-6xl mx-auto p-6">
         <p className="text-red-600">
-          Your account role is <b>{role}</b>. Only <b>operator</b> or <b>admin</b> can access this page.
+          Your account role is <b>{role}</b>. Only <b>operator</b> or <b>admin</b> can access this
+          page.
         </p>
       </main>
     );
@@ -202,28 +200,21 @@ export default function OperatorLeadsPage() {
                 <th className="p-3 border-b">Action</th>
               </tr>
             </thead>
+
             <tbody>
               {pending.map((l) => (
                 <tr key={l.id} className="text-sm">
-                  <td className="p-3 border-b">
-                    {new Date(l.created_at).toLocaleString()}
-                  </td>
+                  <td className="p-3 border-b">{new Date(l.created_at).toLocaleString()}</td>
                   <td className="p-3 border-b">{l.source_type.toUpperCase()}</td>
                   <td className="p-3 border-b">
                     {l.start_date || "—"} {l.end_date ? `→ ${l.end_date}` : ""}
                   </td>
                   <td className="p-3 border-b">{l.pax}</td>
-                  <td
-                    className="p-3 border-b max-w-[240px] truncate"
-                    title={l.notes || ""}
-                  >
+                  <td className="p-3 border-b max-w-[240px] truncate" title={l.notes || ""}>
                     {l.notes || "—"}
                   </td>
                   <td className="p-3 border-b">
-                    <button
-                      onClick={() => setOpenFor(l.id)}
-                      className="px-3 py-1 rounded border"
-                    >
+                    <button onClick={() => setOpenFor(l.id)} className="px-3 py-1 rounded border">
                       Send Quote
                     </button>
                   </td>
@@ -234,11 +225,11 @@ export default function OperatorLeadsPage() {
         </div>
       )}
 
-      {/* Quote drawer / simple panel */}
       {openFor && (
         <div className="fixed inset-0 bg-black/30 grid place-items-center">
           <div className="bg-white rounded-lg p-5 w-full max-w-xl space-y-3">
             <h2 className="text-lg font-semibold">Send Quote</h2>
+
             <div className="grid md:grid-cols-2 gap-3">
               <label className="text-sm">
                 Total price
@@ -250,6 +241,7 @@ export default function OperatorLeadsPage() {
                   onChange={(e) => setPrice(e.target.value)}
                 />
               </label>
+
               <label className="text-sm">
                 Currency
                 <input
@@ -258,6 +250,7 @@ export default function OperatorLeadsPage() {
                   onChange={(e) => setCurrency(e.target.value)}
                 />
               </label>
+
               <label className="text-sm md:col-span-2">
                 Inclusions (comma / newline)
                 <textarea
@@ -267,6 +260,7 @@ export default function OperatorLeadsPage() {
                   onChange={(e) => setInclusions(e.target.value)}
                 />
               </label>
+
               <label className="text-sm md:col-span-2">
                 Exclusions (comma / newline)
                 <textarea
@@ -276,6 +270,7 @@ export default function OperatorLeadsPage() {
                   onChange={(e) => setExclusions(e.target.value)}
                 />
               </label>
+
               <label className="text-sm">
                 Validity date
                 <input
@@ -285,6 +280,7 @@ export default function OperatorLeadsPage() {
                   onChange={(e) => setValidity(e.target.value)}
                 />
               </label>
+
               <label className="text-sm md:col-span-2">
                 Payment terms
                 <input
@@ -294,11 +290,9 @@ export default function OperatorLeadsPage() {
                 />
               </label>
             </div>
+
             <div className="flex gap-2 justify-end pt-2">
-              <button
-                onClick={() => setOpenFor(null)}
-                className="px-3 py-2 border rounded"
-              >
+              <button onClick={() => setOpenFor(null)} className="px-3 py-2 border rounded">
                 Cancel
               </button>
               <button

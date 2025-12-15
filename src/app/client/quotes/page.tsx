@@ -1,4 +1,3 @@
-// src/app/client/quotes/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -12,7 +11,7 @@ type Quote = {
   operator_id: string;
   total_price: number | string;
   currency: string | null;
-  status: string | null; // "sent" | "accepted" | "declined"
+  status: string | null;
   created_at: string;
   inclusions?: any;
   exclusions?: any;
@@ -24,7 +23,11 @@ function toList(value: any): string[] {
   if (typeof value === "string")
     return value.split(/[,;\n]/g).map((s) => s.trim()).filter(Boolean);
   if (typeof value === "object") {
-    try { return Object.values(value).map(v => String(v)); } catch { return []; }
+    try {
+      return Object.values(value).map((v) => String(v));
+    } catch {
+      return [];
+    }
   }
   return [];
 }
@@ -40,31 +43,29 @@ export default function ClientQuotesPage() {
 
   const [acting, setActing] = useState<string | null>(null);
 
-  // decline modal
   const [declineFor, setDeclineFor] = useState<string | null>(null);
   const [declineReason, setDeclineReason] = useState("");
 
-  // 1) Load session + role
   useEffect(() => {
     (async () => {
-      const supa = supabaseBrowser();
-      const { data: { session } } = await supa.auth.getSession();
+      const supa = supabaseBrowser;
+
+      const {
+        data: { session },
+      } = await supa.auth.getSession();
+
       const uid = session?.user?.id ?? null;
       setUserId(uid);
 
       if (uid) {
-        const { data } = await supa
-          .from("profiles")
-          .select("role")
-          .eq("id", uid)
-          .single();
+        const { data } = await supa.from("profiles").select("role").eq("id", uid).single();
         setRole((data?.role as Role) ?? "client");
       }
+
       setCheckingAuth(false);
     })();
   }, []);
 
-  // 2) Load quotes for this user — server reads session, so include cookies
   const reload = async () => {
     setLoading(true);
     setError(null);
@@ -84,18 +85,21 @@ export default function ClientQuotesPage() {
     }
   };
 
-  useEffect(() => { if (userId) reload(); /* eslint-disable-next-line */ }, [userId]);
+  useEffect(() => {
+    if (userId) reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   const totalValue = useMemo(
     () => quotes.reduce((sum, q) => sum + (Number(q.total_price) || 0), 0),
     [quotes]
   );
 
-  // 3) Accept / Decline — send only { quote_id, decision, reason } and include cookies
   async function decide(quoteId: string, decision: "accept" | "decline", reason?: string) {
     try {
       if (!userId) throw new Error("Not authenticated");
       setActing(quoteId);
+
       const res = await fetch("/api/quotes/decision", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -103,12 +107,15 @@ export default function ClientQuotesPage() {
         cache: "no-store",
         body: JSON.stringify({ quote_id: quoteId, decision, reason }),
       });
+
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Failed to submit decision");
+
       if (decision === "decline") {
         setDeclineFor(null);
         setDeclineReason("");
       }
+
       await reload();
       alert(decision === "accept" ? "Quote accepted ✔" : "Quote declined ✔");
     } catch (e: any) {
@@ -118,15 +125,20 @@ export default function ClientQuotesPage() {
     }
   }
 
-  // --------- Guards ---------
   if (checkingAuth) {
-    return <main className="max-w-6xl mx-auto p-6"><p>Checking session…</p></main>;
+    return (
+      <main className="max-w-6xl mx-auto p-6">
+        <p>Checking session…</p>
+      </main>
+    );
   }
 
   if (!userId) {
     return (
       <main className="max-w-6xl mx-auto p-6">
-        <p>Please <a className="underline" href="/auth/login">log in</a> to view your quotes.</p>
+        <p>
+          Please <a className="underline" href="/auth/login">log in</a> to view your quotes.
+        </p>
       </main>
     );
   }
@@ -141,7 +153,6 @@ export default function ClientQuotesPage() {
     );
   }
 
-  // --------- UI ---------
   return (
     <main className="max-w-6xl mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -185,6 +196,7 @@ export default function ClientQuotesPage() {
                   <th className="p-3 border-b">Action</th>
                 </tr>
               </thead>
+
               <tbody>
                 {quotes.map((q) => {
                   const inc = toList(q.inclusions);
@@ -206,19 +218,24 @@ export default function ClientQuotesPage() {
                         }).format(Number(q.total_price))}
                       </td>
                       <td className="p-3 border-b">{q.currency || "—"}</td>
+
                       <td className="p-3 border-b">
-                        <span className={`inline-block rounded px-2 py-0.5 border ${
-                          isAccepted ? "bg-green-50" : isDeclined ? "bg-red-50" : ""
-                        }`}>
+                        <span
+                          className={`inline-block rounded px-2 py-0.5 border ${
+                            isAccepted ? "bg-green-50" : isDeclined ? "bg-red-50" : ""
+                          }`}
+                        >
                           {status}
                         </span>
                       </td>
+
                       <td className="p-3 border-b max-w-[240px] truncate" title={inc.join(", ")}>
                         {inc.join(", ") || "—"}
                       </td>
                       <td className="p-3 border-b max-w-[240px] truncate" title={exc.join(", ")}>
                         {exc.join(", ") || "—"}
                       </td>
+
                       <td className="p-3 border-b">
                         {isSent ? (
                           <div className="flex gap-2">
@@ -229,9 +246,13 @@ export default function ClientQuotesPage() {
                             >
                               {acting === q.id ? "Accepting…" : "Accept"}
                             </button>
+
                             <button
                               disabled={acting === q.id}
-                              onClick={() => { setDeclineFor(q.id); setDeclineReason(""); }}
+                              onClick={() => {
+                                setDeclineFor(q.id);
+                                setDeclineReason("");
+                              }}
                               className="px-3 py-1 rounded border disabled:opacity-50"
                             >
                               Decline
@@ -250,23 +271,26 @@ export default function ClientQuotesPage() {
         </>
       )}
 
-      {/* Decline dialog */}
       {declineFor && (
         <div className="fixed inset-0 bg-black/30 grid place-items-center">
           <div className="bg-white rounded-lg p-5 w-full max-w-md space-y-3">
             <h3 className="text-lg font-semibold">Decline Quote</h3>
             <p className="text-sm text-gray-600">Choose a reason or type your own.</p>
+
             <div className="flex flex-wrap gap-2">
-              {["Too expensive", "Dates not available", "Changed my mind", "Found another operator"].map(r => (
-                <button
-                  key={r}
-                  onClick={() => setDeclineReason(r)}
-                  className="px-2 py-1 rounded border text-sm"
-                >
-                  {r}
-                </button>
-              ))}
+              {["Too expensive", "Dates not available", "Changed my mind", "Found another operator"].map(
+                (r) => (
+                  <button
+                    key={r}
+                    onClick={() => setDeclineReason(r)}
+                    className="px-2 py-1 rounded border text-sm"
+                  >
+                    {r}
+                  </button>
+                )
+              )}
             </div>
+
             <textarea
               className="border rounded p-2 w-full"
               rows={3}
@@ -274,6 +298,7 @@ export default function ClientQuotesPage() {
               value={declineReason}
               onChange={(e) => setDeclineReason(e.target.value)}
             />
+
             <div className="flex justify-end gap-2 pt-2">
               <button onClick={() => setDeclineFor(null)} className="px-3 py-2 border rounded">
                 Cancel

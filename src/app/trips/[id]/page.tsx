@@ -52,7 +52,8 @@ type Operator = {
 /* =================== Data Loader =================== */
 
 async function loadTrip(id: string) {
-  const supabase = supabaseServer();
+  // ✅ FIX: supabaseServer() returns Promise<SupabaseClient> → must await
+  const supabase = await supabaseServer();
 
   // 🔐 get current logged-in user (if any)
   const {
@@ -61,11 +62,13 @@ async function loadTrip(id: string) {
 
   const { data: trip } = await supabase
     .from("trips")
-    .select(`
+    .select(
+      `
       id,title,description,duration,
       parks,style,price_from,price_to,images,status,operator_id,
       overview,highlights,includes,excludes
-    `)
+    `
+    )
     .eq("id", id)
     .maybeSingle();
 
@@ -169,8 +172,7 @@ export default async function TripDetailPage({
 
   // Safe check to avoid rendering "0" in JSX when arrays are empty
   const hasIncExc =
-    ((trip.includes?.length ?? 0) > 0) ||
-    ((trip.excludes?.length ?? 0) > 0);
+    (trip.includes?.length ?? 0) > 0 || (trip.excludes?.length ?? 0) > 0;
 
   // 🔐 Traveller defaults to pass into enquiry card
   const travellerPrefill = buildTravellerPrefill(user);
@@ -219,10 +221,7 @@ export default async function TripDetailPage({
                 >
                   From
                 </div>
-                <div
-                  className="price"
-                  style={{ fontSize: 24, fontWeight: 700 }}
-                >
+                <div className="price" style={{ fontSize: 24, fontWeight: 700 }}>
                   {money(trip.price_from) ?? "Price on request"}
                   {trip.price_to ? (
                     <span
@@ -295,38 +294,20 @@ export default async function TripDetailPage({
           {!!days.length && (
             <section className={s.card}>
               <h2 className={s.h2}>Itinerary</h2>
-              <div
-                style={{
-                  borderTop: `1px solid var(--border)`,
-                }}
-              >
+              <div style={{ borderTop: `1px solid var(--border)` }}>
                 {days.map((d, i) => (
                   <details
                     key={d.day}
                     style={{
                       padding: "14px 0",
                       borderBottom:
-                        i === days.length - 1
-                          ? "none"
-                          : `1px solid var(--border)`,
+                        i === days.length - 1 ? "none" : `1px solid var(--border)`,
                     }}
                   >
-                    <summary
-                      style={{
-                        cursor: "pointer",
-                        fontWeight: 600,
-                      }}
-                    >
+                    <summary style={{ cursor: "pointer", fontWeight: 600 }}>
                       Day {d.day}: {d.title}
                     </summary>
-                    <p
-                      style={{
-                        marginTop: 8,
-                        color: "#2a3b36",
-                      }}
-                    >
-                      {d.desc}
-                    </p>
+                    <p style={{ marginTop: 8, color: "#2a3b36" }}>{d.desc}</p>
                   </details>
                 ))}
               </div>
@@ -397,20 +378,10 @@ export default async function TripDetailPage({
                   <tbody>
                     {rates.map((r, i) => (
                       <tr key={i}>
-                        <td
-                          style={{
-                            padding: 10,
-                            borderBottom: "1px solid var(--border)",
-                          }}
-                        >
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--border)" }}>
                           {r.season || "-"}
                         </td>
-                        <td
-                          style={{
-                            padding: 10,
-                            borderBottom: "1px solid var(--border)",
-                          }}
-                        >
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--border)" }}>
                           {formatRatePeriod(r)}
                         </td>
                         <td
@@ -420,24 +391,12 @@ export default async function TripDetailPage({
                             textAlign: "right",
                           }}
                         >
-                          {r.price_pp != null
-                            ? money(r.price_pp, r.currency || "USD")
-                            : "—"}
+                          {r.price_pp != null ? money(r.price_pp, r.currency || "USD") : "—"}
                         </td>
-                        <td
-                          style={{
-                            padding: 10,
-                            borderBottom: "1px solid var(--border)",
-                          }}
-                        >
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--border)" }}>
                           {r.min_pax ?? "—"}
                         </td>
-                        <td
-                          style={{
-                            padding: 10,
-                            borderBottom: "1px solid var(--border)",
-                          }}
-                        >
+                        <td style={{ padding: 10, borderBottom: "1px solid var(--border)" }}>
                           {r.notes || ""}
                         </td>
                       </tr>
@@ -446,8 +405,7 @@ export default async function TripDetailPage({
                 </table>
               </div>
               <div className={s.small} style={{ marginTop: 8 }}>
-                Prices are indicative; final quote depends on dates, rooming &
-                availability.
+                Prices are indicative; final quote depends on dates, rooming & availability.
               </div>
             </section>
           )}
@@ -456,13 +414,7 @@ export default async function TripDetailPage({
           {hasIncExc && (
             <section className={s.card}>
               <h2 className={s.h2}>What’s Included</h2>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: 16,
-                }}
-              >
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
                 <div>
                   <h3
                     style={{
@@ -476,13 +428,7 @@ export default async function TripDetailPage({
                   </h3>
                   <ul style={{ display: "grid", gap: 6 }}>
                     {(trip.includes ?? []).map((it, i) => (
-                      <li
-                        key={i}
-                        style={{
-                          display: "flex",
-                          gap: 8,
-                        }}
-                      >
+                      <li key={i} style={{ display: "flex", gap: 8 }}>
                         <span style={{ color: "#1b4d3e" }}>✔</span>
                         <span>{it}</span>
                       </li>
@@ -502,13 +448,7 @@ export default async function TripDetailPage({
                   </h3>
                   <ul style={{ display: "grid", gap: 6 }}>
                     {(trip.excludes ?? []).map((it, i) => (
-                      <li
-                        key={i}
-                        style={{
-                          display: "flex",
-                          gap: 8,
-                        }}
-                      >
+                      <li key={i} style={{ display: "flex", gap: 8 }}>
                         <span style={{ color: "#b91c1c" }}>✖</span>
                         <span>{it}</span>
                       </li>
@@ -534,13 +474,7 @@ export default async function TripDetailPage({
           )}
 
           <div style={{ marginTop: 4 }}>
-            <a
-              href="/trips"
-              style={{
-                color: "var(--brand)",
-                textDecoration: "none",
-              }}
-            >
+            <a href="/trips" style={{ color: "var(--brand)", textDecoration: "none" }}>
               ← Back to all trips
             </a>
           </div>
@@ -556,22 +490,14 @@ export default async function TripDetailPage({
               parks={trip.parks ?? []}
               price_from={trip.price_from}
               price_to={trip.price_to}
-              // 🔐 pass traveller defaults into the enquiry form
               initialName={travellerPrefill.name}
               initialEmail={travellerPrefill.email}
-              // ⭐ pass operatorId ili request i-route kwa operator sahihi
               operatorId={trip.operator_id}
             />
 
             {operator && (
               <div className={s.card} style={{ marginTop: 16 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                  }}
-                >
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   {operator.logo_url ? (
                     <img
                       src={operator.logo_url}
@@ -586,12 +512,7 @@ export default async function TripDetailPage({
                     />
                   ) : null}
                   <div>
-                    <div
-                      style={{
-                        fontWeight: 700,
-                        color: "var(--ink)",
-                      }}
-                    >
+                    <div style={{ fontWeight: 700, color: "var(--ink)" }}>
                       {operator.name || "Licensed Operator"}
                     </div>
                     {operator.website && (
