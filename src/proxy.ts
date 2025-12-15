@@ -11,48 +11,64 @@ export function proxy(req: NextRequest) {
 
   const p = url.pathname;
 
-  // ADMIN subdomain
+  // ADMIN subdomain: clean URLs (no /admin in browser)
   if (isAdminHost) {
-    // If someone tries to access operators namespace on admin subdomain, force to /admin
-    if (p.startsWith("/operators")) {
-      url.pathname = "/admin";
+    // If user hits /admin/*, redirect to clean path
+    if (p.startsWith("/admin")) {
+      const clean = p.replace(/^\/admin/, "") || "/";
+      url.pathname = clean;
       return NextResponse.redirect(url);
     }
 
-    // Rewrite everything to /admin/*
-    if (!p.startsWith("/admin")) {
-      url.pathname = `/admin${p}`;
+    // Default route on admin subdomain
+    if (p === "/") {
+      url.pathname = "/admin";
       return NextResponse.rewrite(url);
     }
 
-    return NextResponse.next();
+    // Clean login route
+    if (p === "/login") {
+      url.pathname = "/admin/login";
+      return NextResponse.rewrite(url);
+    }
+
+    // Everything else maps to /admin/*
+    url.pathname = `/admin${p}`;
+    return NextResponse.rewrite(url);
   }
 
-  // OPERATOR subdomain
+  // OPERATOR subdomain: clean URLs (no /operators in browser)
   if (isOperatorHost) {
-    // If someone tries to access admin namespace on operator subdomain, force to /operators
-    if (p.startsWith("/admin")) {
-      url.pathname = "/operators";
+    // If user hits /operators/*, redirect to clean path
+    if (p.startsWith("/operators")) {
+      const clean = p.replace(/^\/operators/, "") || "/";
+      url.pathname = clean;
       return NextResponse.redirect(url);
     }
 
-    // Rewrite everything to /operators/*
-    if (!p.startsWith("/operators")) {
-      url.pathname = `/operators${p}`;
+    // Default route on operator subdomain
+    if (p === "/") {
+      url.pathname = "/operators";
       return NextResponse.rewrite(url);
     }
 
-    return NextResponse.next();
+    // Clean login route
+    if (p === "/login") {
+      url.pathname = "/operators/login";
+      return NextResponse.rewrite(url);
+    }
+
+    // Everything else maps to /operators/*
+    url.pathname = `/operators${p}`;
+    return NextResponse.rewrite(url);
   }
 
   // ROOT domain: block direct access to /admin and /operators
-  // (admin/operator must be accessed via their subdomains)
   if (p.startsWith("/admin") || p.startsWith("/operators")) {
     url.pathname = "/";
     return NextResponse.redirect(url);
   }
 
-  // MAIN domain (travellers/public)
   return NextResponse.next();
 }
 
