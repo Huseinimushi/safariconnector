@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { useBookingsLive } from "@/hooks/useBookingsLive";
 
 /* ---------- Types ---------- */
 
@@ -143,82 +144,98 @@ export default function TravellerBookingsPage() {
     null
   );
 
+  const [travellerId, setTravellerId] = useState<string | null>(null);
+  const [travellerEmail, setTravellerEmail] = useState<string | null>(null);
+
   /* ---------- Load bookings for current traveller (by email in meta) ---------- */
+
+  const load = async () => {
+    setLoading(true);
+    setErrorMsg(null);
+
+    try {
+      const { data: userResp, error: userErr } = await supabase.auth.getUser();
+      if (userErr || !userResp?.user) {
+        console.error("traveller bookings auth error:", userErr);
+        setErrorMsg("Please log in to see your bookings.");
+        setLoading(false);
+        return;
+      }
+
+      const user = userResp.user;
+      const email =
+        (user.email as string) ||
+        ((user.user_metadata?.email as string) ?? null);
+
+      setTravellerId(user.id || null);
+      setTravellerEmail(email || null);
+
+      if (!email) {
+        setErrorMsg("We couldn't find an email on your account.");
+        setLoading(false);
+        return;
+      }
+
+      // Tunatumia meta->traveller_email kama ulivyokuwa unahifadhi kwenye booking
+      const { data, error } = await supabase
+        .from("bookings")
+        .select(
+          "id, trip_id, traveller_id, operator_id, quote_id, status, date_from, date_to, pax, total_amount, currency, payment_status, created_at, meta"
+        )
+        .contains("meta", { traveller_email: email })
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("traveller bookings load error:", error);
+        setBookings([]);
+        setErrorMsg("Could not load your bookings.");
+        setLoading(false);
+        return;
+      }
+
+      const list = (data || []) as BookingRow[];
+
+      setBookings(list);
+
+      if (list.length > 0) {
+        setSelectedBookingId((prev) => prev ?? list[0].id);
+      } else {
+        setSelectedBookingId(null);
+      }
+    } catch (err) {
+      console.error("traveller bookings exception:", err);
+      setErrorMsg("Unexpected error while loading your bookings.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
 
-    const load = async () => {
-      setLoading(true);
-      setErrorMsg(null);
-
-      try {
-        const { data: userResp, error: userErr } =
-          await supabase.auth.getUser();
-        if (userErr || !userResp?.user) {
-          console.error("traveller bookings auth error:", userErr);
-          if (!isMounted) return;
-          setErrorMsg("Please log in to see your bookings.");
-          setLoading(false);
-          return;
-        }
-
-        const user = userResp.user;
-        const email =
-          (user.email as string) ||
-          ((user.user_metadata?.email as string) ?? null);
-
-        if (!email) {
-          if (!isMounted) return;
-          setErrorMsg("We couldn't find an email on your account.");
-          setLoading(false);
-          return;
-        }
-
-        // Tunatumia meta->traveller_email kama ulivyokuwa unahifadhi kwenye booking
-        const { data, error } = await supabase
-          .from("bookings")
-          .select(
-            "id, trip_id, traveller_id, operator_id, quote_id, status, date_from, date_to, pax, total_amount, currency, payment_status, created_at, meta"
-          )
-          .contains("meta", { traveller_email: email })
-          .order("created_at", { ascending: false });
-
-        if (error) {
-          console.error("traveller bookings load error:", error);
-          if (!isMounted) {
-            return;
-          }
-          setBookings([]);
-          setErrorMsg("Could not load your bookings.");
-          setLoading(false);
-          return;
-        }
-
-        const list = (data || []) as BookingRow[];
-
-        if (!isMounted) return;
-        setBookings(list);
-
-        if (list.length > 0) {
-          setSelectedBookingId(list[0].id);
-        }
-      } catch (err) {
-        console.error("traveller bookings exception:", err);
-        if (isMounted) {
-          setErrorMsg("Unexpected error while loading your bookings.");
-        }
-      } finally {
-        if (isMounted) setLoading(false);
-      }
+    const run = async () => {
+      if (!isMounted) return;
+      await load();
     };
 
-    load();
+    run();
 
     return () => {
       isMounted = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ✅ Realtime + polling auto-refresh (traveller scope)
+  // Prefer travellerId for realtime filter; also pass travellerEmail to help payload matching if needed.
+  useBookingsLive({
+    travellerId: travellerId || undefined,
+    travellerEmail: travellerEmail || undefined,
+    enabled: !!travellerId || !!travellerEmail,
+    onChange: () => {
+      load();
+    },
+  });
 
   const selectedBooking = useMemo(
     () =>
@@ -410,9 +427,7 @@ export default function TravellerBookingsPage() {
                   selectedBookingId != null && b.id === selectedBookingId;
 
                 const tripTitle =
-                  b.meta?.trip_title ||
-                  b.meta?.trip_name ||
-                  "Safari booking";
+                  b.meta?.trip_title || b.meta?.trip_name || "Safari booking";
 
                 const operatorName =
                   b.meta?.operator_name ||

@@ -1,36 +1,48 @@
 // src/lib/authServer.ts
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { supabaseServer } from "@/lib/supabaseServer";
-
-export type AuthUser = {
-  id: string;
-  email: string | null;
-};
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
 export type RequireUserResult = {
-  supabase: SupabaseClient;
-  user: AuthUser;
+  user: {
+    id: string;
+    email?: string | null;
+    [key: string]: any;
+  };
+  supabase: ReturnType<typeof createServerClient>;
 };
 
-/**
- * requireUser()
- * - Inatumika kwenye API routes (quotes, leads, etc)
- * - Inarudisha supabase client + user aliye-login
- * - Ikiwa hakuna user, inatupa error "Not authenticated"
- */
 export async function requireUser(): Promise<RequireUserResult> {
-  const supabase = supabaseServer();
+  const cookieStore = await cookies();
+
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !anonKey) {
+    throw new Error(
+      "Missing Supabase env vars (NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY)"
+    );
+  }
+
+  const supabase = createServerClient(url, anonKey, {
+    cookies: {
+      get(name: string) {
+        return cookieStore.get(name)?.value;
+      },
+      set(name: string, value: string, options: any) {
+        cookieStore.set({ name, value, ...options });
+      },
+      remove(name: string, options: any) {
+        cookieStore.set({ name, value: "", ...options, maxAge: 0 });
+      },
+    },
+  });
 
   const { data, error } = await supabase.auth.getUser();
 
-  if (error || !data.user) {
+  // ✅ KEY CHANGE: throw if not authenticated (no null user returned)
+  if (error || !data?.user) {
     throw new Error("Not authenticated");
   }
 
-  const user: AuthUser = {
-    id: data.user.id,
-    email: data.user.email ?? null, // 🔧 ensure null, not undefined
-  };
-
-  return { supabase, user };
+  return { user: data.user, supabase };
 }

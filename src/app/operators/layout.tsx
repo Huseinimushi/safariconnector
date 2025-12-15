@@ -1,12 +1,19 @@
-"use client";
+// src/app/operators/layout.tsx
+import { ReactNode } from "react";
+import { redirect } from "next/navigation";
+import { getUserRole } from "@/lib/rolesServer";
 
-import React from "react";
+export default async function OperatorsLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const role = await getUserRole();
 
-type Props = {
-  children: React.ReactNode;
-};
+  // Not logged in OR wrong role → send to operator login
+  if (role !== "operator") {
+    redirect("/operators/login");
+  }
 
-export default function OperatorsLayout({ children }: Props) {
-  // ✅ hakuna check, dashboard na login zote zinaonekana kama kawaida
   return <>{children}</>;
 }

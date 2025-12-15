@@ -7,6 +7,9 @@ import { supabase } from "@/lib/supabaseClient";
 const BG_SAND = "#F4F3ED";
 const BRAND_GREEN = "#0B6B3A";
 
+// Simple rule (kama ulivyotaka): admin ni email hii tu
+const ADMIN_EMAILS = ["admin@safariconnector.com"].map((e) => e.toLowerCase());
+
 export default function AdminLoginPage() {
   const router = useRouter();
 
@@ -26,7 +29,7 @@ export default function AdminLoginPage() {
 
     setLoading(true);
     try {
-      // 1. Sign in normally
+      // 1) Sign in normally (client-side)
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -34,32 +37,26 @@ export default function AdminLoginPage() {
 
       if (error || !data?.user) {
         console.error("admin login error:", error);
-        setErrorMsg("Invalid email or password.");
-        setLoading(false);
+        setErrorMsg(error?.message || "Invalid email or password.");
         return;
       }
 
       const user = data.user;
       const userEmail = (user.email || "").toLowerCase();
 
-      // 🔥 SIMPLE RULE: ONLY THIS EMAIL IS ADMIN
-      const isAdminEmail = userEmail === "admin@safariconnector.com";
-
-      if (!isAdminEmail) {
-        // sio admin → signOut na ujumbe
+      // 2) Enforce admin email allowlist (client-side)
+      if (!ADMIN_EMAILS.includes(userEmail)) {
         await supabase.auth.signOut();
-        setErrorMsg(
-          "This account is not allowed to access the admin panel."
-        );
-        setLoading(false);
+        setErrorMsg("This account is not allowed to access the admin panel.");
         return;
       }
 
-      // 2. Admin confirmed → redirect to admin dashboard
+      // 3) Success -> go to admin dashboard
       router.replace("/admin");
+      router.refresh();
     } catch (err: any) {
-      console.error(err);
-      setErrorMsg("Unexpected error during login.");
+      console.error("admin login exception:", err);
+      setErrorMsg(err?.message || "Unexpected error during login.");
     } finally {
       setLoading(false);
     }
@@ -117,13 +114,9 @@ export default function AdminLoginPage() {
               padding: "8px 10px",
               borderRadius: 10,
               fontSize: 13,
-              backgroundColor: errorMsg.includes("not allowed")
-                ? "#FEF3C7"
-                : "#FEE2E2",
-              color: errorMsg.includes("not allowed")
-                ? "#92400E"
-                : "#B91C1C",
-              border: "1px solid #FCD34D",
+              backgroundColor: "#FEE2E2",
+              color: "#B91C1C",
+              border: "1px solid #FECACA",
             }}
           >
             {errorMsg}
@@ -152,6 +145,7 @@ export default function AdminLoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               style={inputStyle}
               placeholder="admin@safariconnector.com"
+              autoComplete="email"
             />
           </div>
 
@@ -173,6 +167,7 @@ export default function AdminLoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               style={inputStyle}
               placeholder="••••••••"
+              autoComplete="current-password"
             />
           </div>
 

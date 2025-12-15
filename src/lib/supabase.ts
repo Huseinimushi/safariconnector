@@ -1,6 +1,5 @@
-import { createClient } from '@supabase/supabase-js'
+"use client";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Re-export the single cookie-based browser client.
+// This prevents accidental use of the legacy localStorage client.
+export { supabase, supabaseBrowser } from "@/lib/supabaseClient";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -16,64 +16,137 @@ const SOCIAL_LINKS = {
   tiktok: "https://tiktok.com/@safariconnector",
 };
 
+type Role = "anon" | "traveller" | "operator";
+
 export default function Nav() {
   const pathname = usePathname();
   const router = useRouter();
 
+  const mountedRef = useRef(true);
+
+  const [role, setRole] = useState<Role>("anon");
   const [hasUser, setHasUser] = useState(false);
   const [isOperator, setIsOperator] = useState(false);
 
-  useEffect(() => {
-    let active = true;
+  // -----------------------------
+  // Helpers
+  // -----------------------------
 
-    const determineFromUser = async (user: any | null) => {
-      if (!active) return;
+  const safeSetState = (fn: () => void) => {
+    if (!mountedRef.current) return;
+    fn();
+  };
 
-      if (!user) {
+  const logSupabaseError = (label: string, err: any) => {
+    // Supabase/PostgREST errors often have these fields
+    console.error(label, {
+      message: err?.message,
+      details: err?.details,
+      hint: err?.hint,
+      code: err?.code,
+      status: err?.status,
+      name: err?.name,
+    });
+  };
+
+  const determineFromUser = async (user: any | null) => {
+    if (!mountedRef.current) return;
+
+    if (!user) {
+      safeSetState(() => {
+        setRole("anon");
         setHasUser(false);
         setIsOperator(false);
-        return;
-      }
+      });
+      return;
+    }
 
+    safeSetState(() => {
       setHasUser(true);
+    });
 
-      try {
-        // 🔍 check kama huyu user ana operator profile
-        const { data, error } = await supabase
-          .from("operators")
-          .select("id")
-          .eq("user_id", user.id)
-          .maybeSingle();
+    // Check operator profile
+    try {
+      const { data, error } = await supabase
+        .from("operators")
+        .select("id")
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-        if (!active) return;
+      if (!mountedRef.current) return;
 
-        if (error) {
-          console.error("Nav operators lookup error:", error);
-          setIsOperator(false);
+      if (error) {
+        const e: any = error;
+        const status = e?.status;
+        const code = e?.code;
+
+        // Treat "no rows" as NOT operator (common for maybeSingle)
+        // Depending on PostgREST versions: status 406 or code PGRST116
+        if (status === 406 || code === "PGRST116") {
+          safeSetState(() => {
+            setIsOperator(false);
+            setRole("traveller");
+          });
           return;
         }
 
-        setIsOperator(!!data);
-      } catch (err) {
-        console.error("Nav operators lookup exception:", err);
-        if (active) setIsOperator(false);
-      }
-    };
+        // Real error (often RLS/policy)
+        logSupabaseError("Nav operators lookup error:", e);
 
-    const fetchUser = async () => {
+        safeSetState(() => {
+          setIsOperator(false);
+          setRole("traveller");
+        });
+        return;
+      }
+
+      const op = !!data?.id;
+
+      safeSetState(() => {
+        setIsOperator(op);
+        setRole(op ? "operator" : "traveller");
+      });
+    } catch (err: any) {
+      logSupabaseError("Nav operators lookup exception:", err);
+      safeSetState(() => {
+        setIsOperator(false);
+        setRole("traveller");
+      });
+    }
+  };
+
+  // -----------------------------
+  // Auth bootstrap (run once)
+  // -----------------------------
+  useEffect(() => {
+    mountedRef.current = true;
+
+    const boot = async () => {
       try {
-        const { data } = await supabase.auth.getUser();
+        const { data, error } = await supabase.auth.getUser();
+
+        if (error) {
+          logSupabaseError("Nav auth getUser error:", error);
+          safeSetState(() => {
+            setRole("anon");
+            setHasUser(false);
+            setIsOperator(false);
+          });
+          return;
+        }
+
         await determineFromUser(data?.user ?? null);
-      } catch (err) {
-        console.error("Nav auth check error:", err);
-        if (active) {
+      } catch (err: any) {
+        logSupabaseError("Nav auth bootstrap exception:", err);
+        safeSetState(() => {
+          setRole("anon");
           setHasUser(false);
           setIsOperator(false);
-        }
+        });
       }
     };
 
-    fetchUser();
+    boot();
 
     const { data: listener } = supabase.auth.onAuthStateChange(
       (_event, session) => {
@@ -82,36 +155,32 @@ export default function Nav() {
     );
 
     return () => {
-      active = false;
+      mountedRef.current = false;
       listener.subscription.unsubscribe();
     };
-  }, [pathname]);
+    // IMPORTANT: do not depend on pathname (avoid re-subscribing every route change)
+  }, []);
 
   // ------------------------------------------------
-  // LABELS KWA MANTIKI ULIYOTAKA
+  // LABELS (as you wanted)
   // ------------------------------------------------
+  const travellerLabel = useMemo(() => {
+    // logged in and not operator => My Account
+    return hasUser && !isOperator ? "My Account" : "Login as Traveller";
+  }, [hasUser, isOperator]);
 
-  // Kama user ka-login na SI operator → My Account
-  // Kama operator au hakuna user → Login as Traveller
-  const travellerLabel =
-    hasUser && !isOperator ? "My Account" : "Login as Traveller";
-
-  // Kama operator → My Dashboard
-  // Wengine wote (traveller au no user) → Login as Operator
-  const operatorLabel = isOperator ? "My Dashboard" : "Login as Operator";
+  const operatorLabel = useMemo(() => {
+    // operator => My Dashboard
+    return isOperator ? "My Dashboard" : "Login as Operator";
+  }, [isOperator]);
 
   // ------------------------------------------------
   // CLICK HANDLERS
   // ------------------------------------------------
-
   const handleTravellerClick = () => {
     if (hasUser && !isOperator) {
-      // Logged-in non-operator (Traveller / normal user)
       router.push("/traveller/dashboard");
-      // ukitaka iwe profile:
-      // router.push("/traveller/profile");
     } else {
-      // Either not logged in OR ni operator
       router.push("/login/traveller");
     }
   };
@@ -119,8 +188,6 @@ export default function Nav() {
   const handleOperatorClick = () => {
     if (isOperator) {
       router.push("/operators/dashboard");
-      // au kama dashboard yako ni /operators:
-      // router.push("/operators");
     } else {
       router.push("/operators/login");
     }
@@ -130,7 +197,7 @@ export default function Nav() {
 
   return (
     <header className="nav-root">
-      {/* TOP BAR (dark green strip) */}
+      {/* TOP BAR */}
       <div
         style={{
           background: "#1B4D3E",
@@ -145,13 +212,11 @@ export default function Nav() {
             justifyContent: "space-between",
           }}
         >
-          {/* Left side: email + phone */}
           <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
             <span>Email: info@safariconnector.com</span>
             <span>Phone: +255 686 032 307</span>
           </div>
 
-          {/* Right side: logins + socials */}
           <div
             style={{
               display: "flex",
@@ -161,7 +226,6 @@ export default function Nav() {
             }}
           >
             <div style={{ display: "flex", gap: 8 }}>
-              {/* Traveller Button */}
               <button
                 type="button"
                 onClick={handleTravellerClick}
@@ -177,7 +241,6 @@ export default function Nav() {
                 {travellerLabel}
               </button>
 
-              {/* Operator Button */}
               <button
                 type="button"
                 onClick={handleOperatorClick}
@@ -194,13 +257,7 @@ export default function Nav() {
               </button>
             </div>
 
-            <div
-              style={{
-                display: "flex",
-                gap: 10,
-                fontSize: 14,
-              }}
-            >
+            <div style={{ display: "flex", gap: 10, fontSize: 14 }}>
               <a
                 href={SOCIAL_LINKS.facebook}
                 target="_blank"
@@ -242,20 +299,14 @@ export default function Nav() {
         </div>
       </div>
 
-      {/* MAIN NAV BAR */}
+      {/* MAIN NAV */}
       <div className="nav-inner">
-        {/* LOGO */}
         <div className="nav-brand">
           <Link href="/" aria-label="Safari Connector home">
-            <img
-              src="/logo.png"
-              alt="Safari Connector"
-              className="nav-logo"
-            />
+            <img src="/logo.png" alt="Safari Connector" className="nav-logo" />
           </Link>
         </div>
 
-        {/* CENTER LINKS */}
         <nav className="nav-links">
           <Link
             href="/trips"
@@ -283,24 +334,19 @@ export default function Nav() {
 
           <Link
             href="/plan"
-            className={`nav-link${
-              pathname === "/plan" ? " active" : ""
-            }`}
+            className={`nav-link${pathname === "/plan" ? " active" : ""}`}
           >
             AI Trip Builder
           </Link>
 
           <Link
             href="/about"
-            className={`nav-link${
-              pathname === "/about" ? " active" : ""
-            }`}
+            className={`nav-link${pathname === "/about" ? " active" : ""}`}
           >
             About
           </Link>
         </nav>
 
-        {/* RIGHT SIDE: SEARCH */}
         <div className="nav-actions">
           <div
             style={{

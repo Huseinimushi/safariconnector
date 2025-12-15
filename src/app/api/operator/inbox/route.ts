@@ -3,7 +3,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser } from "@/lib/authServer";
+import { requireUser } from "@/lib/supabase/authServer";
 
 /**
  * GET /api/operator/inbox
@@ -12,14 +12,12 @@ import { requireUser } from "@/lib/authServer";
 
 export async function GET(_request: NextRequest) {
   try {
-    // ✅ FIX: requireUser() takes NO args
     const { user, supabase } = await requireUser();
 
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Pata operator_id kutoka operators_view (unaweza kubadili kuwa "operators" kama ndo unatumia)
     const { data: operatorRow, error: operatorError } = await supabase
       .from("operators_view")
       .select("id")
@@ -36,7 +34,6 @@ export async function GET(_request: NextRequest) {
 
     const operatorId = String((operatorRow as any).id);
 
-    // Soma data kutoka operator_inbox_view (tuliyoitengeneza supabase)
     const { data, error } = await supabase
       .from("operator_inbox_view")
       .select("*")

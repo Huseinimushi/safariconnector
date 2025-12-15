@@ -19,7 +19,7 @@ type ReplyPayload = {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as Partial<ReplyPayload>;
+    const body = (await req.json().catch(() => ({}))) as Partial<ReplyPayload>;
     const quoteRequestId = body.quote_request_id;
     const msg = (body.message || "").trim();
 
@@ -32,6 +32,11 @@ export async function POST(req: NextRequest) {
 
     // 1) Hakikisha user yupo na ni operator
     const { supabase, user } = await requireUser();
+
+    // ✅ FIX: user can be null (TypeScript + security)
+    if (!user) {
+      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+    }
 
     const { data: opRow, error: opError } = await supabase
       .from("operators")
@@ -54,12 +59,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2) Soma enquiry kutoka quote_requests (kwa admin client ili kuepuka RLS issues)
+    // 2) Soma enquiry kutoka quote_requests (admin client ili kuepuka RLS issues)
     const { data: qr, error: qrError } = await supabaseAdmin
       .from("quote_requests")
-      .select(
-        "id, operator_id, name, email, trip_title, date, pax, note"
-      )
+      .select("id, operator_id, name, email, trip_title, date, pax, note")
       .eq("id", quoteRequestId)
       .maybeSingle();
 
@@ -72,21 +75,38 @@ export async function POST(req: NextRequest) {
     }
 
     if (!qr) {
-      return NextResponse.json(
-        { error: "Enquiry not found." },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Enquiry not found." }, { status: 404 });
     }
 
     if (qr.operator_id && qr.operator_id !== opRow.id) {
-      // si enquiry yake
       return NextResponse.json(
         { error: "You do not have access to this enquiry." },
         { status: 403 }
       );
     }
 
-    // 3) Kama hakuna Resend tuna-skip kimya kimya (chat bado ina-save DB)
+    // 3) ✅ Save message in DB (admin client to avoid RLS issues)
+    // NOTE: rename table/columns if your schema differs
+    const { error: msgErr } = await supabaseAdmin
+      .from("quote_request_messages")
+      .insert([
+        {
+          quote_request_id: quoteRequestId,
+          sender_role: "operator",
+          sender_id: opRow.id,
+          message: msg,
+        },
+      ]);
+
+    if (msgErr) {
+      console.error("reply insert message error:", msgErr);
+      return NextResponse.json(
+        { error: "Failed to save message." },
+        { status: 500 }
+      );
+    }
+
+    // 4) Kama hakuna Resend tuna-skip email (but DB already saved)
     if (!resend) {
       console.warn(
         "RESEND_API_KEY not set – skipping traveller email notification."
@@ -107,7 +127,6 @@ export async function POST(req: NextRequest) {
     const paxLabel =
       qr.pax != null ? `${qr.pax} traveller(s)` : "Group size not specified";
 
-    // 4) Tuma email
     await resend.emails.send({
       from: FROM_EMAIL,
       to: qr.email,
@@ -131,9 +150,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ ok: true, emailSent: true }, { status: 200 });
   } catch (e: any) {
-    if (e?.message === "Not authenticated") {
-      return NextResponse.json({ error: "Not signed in" }, { status: 401 });
-    }
     console.error("Unexpected error in /api/quote-requests/reply:", e);
     return NextResponse.json(
       { error: e?.message || "Unexpected error" },

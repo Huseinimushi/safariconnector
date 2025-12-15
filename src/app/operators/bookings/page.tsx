@@ -5,7 +5,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { useBookingsSync } from "@/hooks/useBookingsSync";
+import { useBookingsLive } from "@/hooks/useBookingsLive";
 
 /* ---------- Types ---------- */
 
@@ -303,12 +303,11 @@ export default function OperatorBookingsPage() {
     load();
   }, [load]);
 
-  // ✅ Realtime/polling auto-refresh when Finance updates booking.status
-  useBookingsSync({
+  // ✅ Realtime + polling auto-refresh when Finance updates booking.status (and any booking changes)
+  useBookingsLive({
     operatorId: operatorId || undefined,
     enabled: !!operatorId,
     onChange: () => {
-      // Re-fetch list when there is any booking update for this operator.
       load();
     },
   });
@@ -320,8 +319,13 @@ export default function OperatorBookingsPage() {
     // - pending
     // - payment_submitted
     // - payment_verified (waiting operator confirm)
-    const pendingLike = new Set(["pending", "payment_submitted", "payment_verified"]);
-    return bookings.filter((b) => pendingLike.has(normaliseStatus(b.status))).length;
+    const pendingLike = new Set([
+      "pending",
+      "payment_submitted",
+      "payment_verified",
+    ]);
+    return bookings.filter((b) => pendingLike.has(normaliseStatus(b.status)))
+      .length;
   }, [bookings]);
 
   const confirmedBookings = useMemo(
@@ -364,9 +368,7 @@ export default function OperatorBookingsPage() {
 
         // Optimistic UI: update locally
         setBookings((prev) =>
-          prev.map((b) =>
-            b.id === bookingId ? { ...b, status: "confirmed" } : b
-          )
+          prev.map((b) => (b.id === bookingId ? { ...b, status: "confirmed" } : b))
         );
 
         // Then refetch to ensure server is source of truth
