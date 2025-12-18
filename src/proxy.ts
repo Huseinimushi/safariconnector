@@ -1,72 +1,57 @@
 // src/proxy.ts
 import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
-export function proxy(req: NextRequest) {
-  const url = req.nextUrl;
-  const hostHeader = req.headers.get("host") || "";
-  const host = hostHeader.split(":")[0].toLowerCase();
+export async function proxy(req: NextRequest) {
+  const url = req.nextUrl.clone();
+  const host = (req.headers.get("host") || "").split(":")[0].toLowerCase();
+  const pathname = url.pathname;
 
   const isAdminHost = host.startsWith("admin.");
-  const isOperatorHost = host.startsWith("operator.");
 
-  const p = url.pathname;
-
-  // ADMIN subdomain: user-facing URLs should NOT include /admin
   if (isAdminHost) {
-    // Normalize accidental /admin/* to clean path
-    if (p.startsWith("/admin")) {
-      const clean = p.replace(/^\/admin/, "") || "/";
-      url.pathname = clean;
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll: () => req.cookies.getAll(),
+          setAll: () => {},
+        },
+      }
+    );
+
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    // Normalize accidental /admin/* in URL bar
+    if (pathname.startsWith("/admin/")) {
+      url.pathname = pathname.replace(/^\/admin/, "") || "/";
       return NextResponse.redirect(url);
     }
 
-    // Clean login URL
-    if (p === "/login") {
-      url.pathname = "/admin/login";
-      return NextResponse.rewrite(url);
+    // PUBLIC admin route = /login
+    if (!user && pathname !== "/login") {
+      url.pathname = "/login";
+      return NextResponse.redirect(url);
     }
 
-    // Default admin landing
-    if (p === "/") {
+    // USER logged in: hitting /login should redirect dashboard
+    if (user && pathname === "/login") {
+      url.pathname = "/admin";
+      return NextResponse.redirect(url);
+    }
+
+    // "/" => dashboard rewrite
+    if (pathname === "/") {
       url.pathname = "/admin";
       return NextResponse.rewrite(url);
     }
 
-    // Everything else -> /admin/*
-    url.pathname = `/admin${p}`;
+    // rewrite all other paths
+    url.pathname = `/admin${pathname}`;
     return NextResponse.rewrite(url);
-  }
-
-  // OPERATOR subdomain: user-facing URLs should NOT include /operators
-  if (isOperatorHost) {
-    // Normalize accidental /operators/* to clean path
-    if (p.startsWith("/operators")) {
-      const clean = p.replace(/^\/operators/, "") || "/";
-      url.pathname = clean;
-      return NextResponse.redirect(url);
-    }
-
-    // Clean login URL
-    if (p === "/login") {
-      url.pathname = "/operators/login";
-      return NextResponse.rewrite(url);
-    }
-
-    // Default operator landing
-    if (p === "/") {
-      url.pathname = "/operators";
-      return NextResponse.rewrite(url);
-    }
-
-    // Everything else -> /operators/*
-    url.pathname = `/operators${p}`;
-    return NextResponse.rewrite(url);
-  }
-
-  // ROOT domain: block direct access to /admin and /operators
-  if (p.startsWith("/admin") || p.startsWith("/operators")) {
-    url.pathname = "/";
-    return NextResponse.redirect(url);
   }
 
   return NextResponse.next();
