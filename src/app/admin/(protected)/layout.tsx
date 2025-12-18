@@ -4,7 +4,7 @@ import { ReactNode } from "react";
 export default function AdminProtectedLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return <>{children}</>;
 }

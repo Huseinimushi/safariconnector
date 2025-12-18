@@ -1,62 +1,85 @@
 // src/proxy.ts
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
 
-export async function proxy(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const url = req.nextUrl.clone();
-  const host = (req.headers.get("host") || "").split(":")[0].toLowerCase();
+  const hostHeader = req.headers.get("host") || "";
+  const host = hostHeader.split(":")[0].toLowerCase();
   const pathname = url.pathname;
 
   const isAdminHost = host.startsWith("admin.");
+  const isOperatorHost = host.startsWith("operator.");
 
+  /* ================= ADMIN SUBDOMAIN =================
+     admin.safariconnector.com
+     - Public URL: /login
+     - Internal app routes live under /admin/*
+  ===================================================== */
   if (isAdminHost) {
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll: () => req.cookies.getAll(),
-          setAll: () => {},
-        },
-      }
-    );
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    // Normalize accidental /admin/* in URL bar
-    if (pathname.startsWith("/admin/")) {
-      url.pathname = pathname.replace(/^\/admin/, "") || "/";
-      return NextResponse.redirect(url);
-    }
-
-    // PUBLIC admin route = /login
-    if (!user && pathname !== "/login") {
-      url.pathname = "/login";
-      return NextResponse.redirect(url);
-    }
-
-    // USER logged in: hitting /login should redirect dashboard
-    if (user && pathname === "/login") {
-      url.pathname = "/admin";
-      return NextResponse.redirect(url);
-    }
-
-    // "/" => dashboard rewrite
+    // Root of admin subdomain -> admin dashboard route in app
     if (pathname === "/") {
       url.pathname = "/admin";
       return NextResponse.rewrite(url);
     }
 
-    // rewrite all other paths
+    // Admin login (clean URL) -> internal /admin/login page
+    if (pathname === "/login") {
+      url.pathname = "/admin/login";
+      return NextResponse.rewrite(url);
+    }
+
+    // If request already points to /admin/* just let Next handle it
+    if (pathname.startsWith("/admin")) {
+      return NextResponse.next();
+    }
+
+    // Any other path on admin subdomain -> map into /admin/*
     url.pathname = `/admin${pathname}`;
     return NextResponse.rewrite(url);
   }
 
+  /* =============== OPERATOR SUBDOMAIN =================
+     operator.safariconnector.com
+     - Public URL: /login
+     - Internal app routes live under /operators/*
+  ===================================================== */
+  if (isOperatorHost) {
+    // Root of operator subdomain -> operators root route
+    if (pathname === "/") {
+      url.pathname = "/operators";
+      return NextResponse.rewrite(url);
+    }
+
+    // Operator login (clean URL) -> internal /operators/login
+    if (pathname === "/login") {
+      url.pathname = "/operators/login";
+      return NextResponse.rewrite(url);
+    }
+
+    // Already under /operators/* -> let Next handle it
+    if (pathname.startsWith("/operators")) {
+      return NextResponse.next();
+    }
+
+    // Any other operator-subdomain path -> map into /operators/*
+    url.pathname = `/operators${pathname}`;
+    return NextResponse.rewrite(url);
+  }
+
+  /* ================= ROOT DOMAIN =====================
+     safariconnector.com / www.safariconnector.com
+     - Block direct access to /admin and /operators
+  ===================================================== */
+  if (pathname.startsWith("/admin") || pathname.startsWith("/operators")) {
+    url.pathname = "/";
+    return NextResponse.redirect(url);
+  }
+
+  // Normal main-site request
   return NextResponse.next();
 }
 
 export const config = {
   matcher: ["/((?!_next|favicon.ico|robots.txt|sitemap.xml).*)"],
 };
+ 
