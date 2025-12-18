@@ -12,56 +12,57 @@ export function proxy(req: NextRequest) {
 
   /* ================= ADMIN SUBDOMAIN =================
      admin.safariconnector.com
-     - Public URL: /login
-     - Internal app routes live under /admin/*
+     - Main app routes live under /admin/*
+     - Accept BOTH:
+       - /login  (clean)
+       - /admin/login  (direct)
+     - Avoid ALL redirects inside this subdomain to prevent loops
   ===================================================== */
   if (isAdminHost) {
-    // Root of admin subdomain -> admin dashboard route in app
+    // 1) Root: show /admin (internal)
     if (pathname === "/") {
       url.pathname = "/admin";
-      return NextResponse.rewrite(url);
+      return NextResponse.rewrite(url); // URL stays "/"
     }
 
-    // Admin login (clean URL) -> internal /admin/login page
+    // 2) Clean login URL -> use internal /admin/login, BUT keep URL as "/login"
     if (pathname === "/login") {
-      url.pathname = "/admin/login";
-      return NextResponse.rewrite(url);
+      const internal = url.clone();
+      internal.pathname = "/admin/login";
+      return NextResponse.rewrite(internal); // no redirect, no URL change
     }
 
-    // If request already points to /admin/* just let Next handle it
+    // 3) If someone types /admin/login or any /admin/* directly, DO NOT touch it
     if (pathname.startsWith("/admin")) {
-      return NextResponse.next();
+      return NextResponse.next(); // let Next.js render the real page, no proxy redirect
     }
 
-    // Any other path on admin subdomain -> map into /admin/*
+    // 4) Any other path on admin subdomain -> map into /admin/*
     url.pathname = `/admin${pathname}`;
     return NextResponse.rewrite(url);
   }
 
   /* =============== OPERATOR SUBDOMAIN =================
      operator.safariconnector.com
-     - Public URL: /login
-     - Internal app routes live under /operators/*
+     - Internal app under /operators/*
+     - Clean URLs: "/", "/login"
   ===================================================== */
   if (isOperatorHost) {
-    // Root of operator subdomain -> operators root route
     if (pathname === "/") {
       url.pathname = "/operators";
       return NextResponse.rewrite(url);
     }
 
-    // Operator login (clean URL) -> internal /operators/login
     if (pathname === "/login") {
-      url.pathname = "/operators/login";
-      return NextResponse.rewrite(url);
+      const internal = url.clone();
+      internal.pathname = "/operators/login";
+      return NextResponse.rewrite(internal);
     }
 
-    // Already under /operators/* -> let Next handle it
     if (pathname.startsWith("/operators")) {
       return NextResponse.next();
     }
 
-    // Any other operator-subdomain path -> map into /operators/*
     url.pathname = `/operators${pathname}`;
     return NextResponse.rewrite(url);
   }
@@ -82,4 +83,3 @@ export function proxy(req: NextRequest) {
 export const config = {
   matcher: ["/((?!_next|favicon.ico|robots.txt|sitemap.xml).*)"],
 };
- 
