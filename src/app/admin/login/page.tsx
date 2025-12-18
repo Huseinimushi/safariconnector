@@ -1,14 +1,16 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, type CSSProperties, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 const BG_SAND = "#F4F3ED";
 const BRAND_GREEN = "#0B6B3A";
 
-// Simple rule (kama ulivyotaka): admin ni email hii tu
-const ADMIN_EMAILS = ["admin@safariconnector.com"].map((e) => e.toLowerCase());
+// Admins allowed to access this panel
+const ADMIN_EMAILS = ["admin@safariconnector.com"].map((e) =>
+  e.toLowerCase()
+);
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -18,7 +20,7 @@ export default function AdminLoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErrorMsg(null);
 
@@ -29,7 +31,7 @@ export default function AdminLoginPage() {
 
     setLoading(true);
     try {
-      // 1) Sign in normally (client-side)
+      // 1) Normal Supabase password sign-in (client side)
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -44,14 +46,14 @@ export default function AdminLoginPage() {
       const user = data.user;
       const userEmail = (user.email || "").toLowerCase();
 
-      // 2) Enforce admin email allowlist (client-side)
+      // 2) Simple admin allow-list
       if (!ADMIN_EMAILS.includes(userEmail)) {
         await supabase.auth.signOut();
         setErrorMsg("This account is not allowed to access the admin panel.");
         return;
       }
 
-      // 3) Success -> go to admin dashboard
+      // 3) Success → go to admin dashboard
       router.replace("/admin");
       router.refresh();
     } catch (err: any) {
@@ -116,7 +118,7 @@ export default function AdminLoginPage() {
               fontSize: 13,
               backgroundColor: "#FEE2E2",
               color: "#B91C1C",
-              border: "1px solid #FECACA",
+              border: "1px solid #FECACA", // ← fixed
             }}
           >
             {errorMsg}
@@ -196,7 +198,7 @@ export default function AdminLoginPage() {
   );
 }
 
-const inputStyle: React.CSSProperties = {
+const inputStyle: CSSProperties = {
   width: "100%",
   padding: "8px 10px",
   borderRadius: 8,
