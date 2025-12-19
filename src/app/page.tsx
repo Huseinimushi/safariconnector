@@ -1,3 +1,5 @@
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { supabaseServer } from "@/lib/supabaseServer";
@@ -39,7 +41,19 @@ const isRemoteUrl = (src: string | null | undefined) =>
   !!src && (src.startsWith("http://") || src.startsWith("https://"));
 
 export default async function HomePage() {
-  // ✅ FIX: supabaseServer() returns Promise<SupabaseClient> → must await
+  // ── Host-based routing: admin/operator wasipewe homepage ──
+  const h = await headers();
+  const host = (h.get("host") || "").toLowerCase();
+
+  if (host.startsWith("admin.")) {
+    redirect("/admin");
+  }
+
+  if (host.startsWith("operator.")) {
+    redirect("/operators/dashboard");
+  }
+
+  // ✅ supabaseServer() returns Promise<SupabaseClient> → must await
   const supabase = await supabaseServer();
 
   // Pull data (trips, top approved operators, total approved operators count)
@@ -496,7 +510,10 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
   const remote = isRemoteUrl(imgSrc);
 
   return (
-    <Link href={`/trips/${trip.id}`} style={{ textDecoration: "none", color: "inherit" }}>
+    <Link
+      href={`/trips/${trip.id}`}
+      style={{ textDecoration: "none", color: "inherit" }}
+    >
       <div
         style={{
           border: highlight ? "2px solid #0B7A53" : "1px solid #E5E7EB",
@@ -519,7 +536,12 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
               <img
                 src={imgSrc}
                 alt={trip.title}
-                style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                }}
               />
             ) : (
               <Image src={imgSrc} alt={trip.title} fill className="object-cover" />
@@ -545,7 +567,14 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
         </div>
 
         <div style={{ padding: 12, flexGrow: 1 }}>
-          <div style={{ fontWeight: 800, fontSize: 16, color: "#111827", lineHeight: 1.3 }}>
+          <div
+            style={{
+              fontWeight: 800,
+              fontSize: 16,
+              color: "#111827",
+              lineHeight: 1.3,
+            }}
+          >
             {trip.title}
           </div>
           <div
@@ -587,7 +616,9 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
               ? `From $${Number(trip.price_from).toLocaleString()}`
               : "Price on request"}
           </div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#0B7A53" }}>View →</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#0B7A53" }}>
+            View →
+          </div>
         </div>
       </div>
     </Link>
@@ -596,7 +627,10 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
 
 function DestinationCard({ name, img }: { name: string; img?: string }) {
   return (
-    <Link href={`/trips?park=${encodeURIComponent(name)}`} style={{ textDecoration: "none", color: "inherit" }}>
+    <Link
+      href={`/trips?park=${encodeURIComponent(name)}`}
+      style={{ textDecoration: "none", color: "inherit" }}
+    >
       <div
         style={{
           border: "1px solid #E5E7EB",
@@ -613,7 +647,8 @@ function DestinationCard({ name, img }: { name: string; img?: string }) {
             style={{
               position: "absolute",
               inset: 0,
-              background: "linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.55))",
+              background:
+                "linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.55))",
             }}
           />
           <div
@@ -640,12 +675,17 @@ function OperatorCard({ op }: { op: OperatorRow }) {
     (op.status || "").toLowerCase() === "approved" ||
     (op.status || "").toLowerCase() === "live";
 
-  const statusLabel = isApproved ? "Approved operator" : (op.status || "Pending").toString();
+  const statusLabel = isApproved
+    ? "Approved operator"
+    : (op.status || "Pending").toString();
   const statusColor = isApproved ? "#166534" : "#92400E";
   const statusBg = isApproved ? "#ECFDF3" : "#FEF3C7";
 
   return (
-    <Link href={`/operators/${op.id}`} style={{ textDecoration: "none", color: "inherit" }}>
+    <Link
+      href={`/operators/${op.id}`}
+      style={{ textDecoration: "none", color: "inherit" }}
+    >
       <div
         style={{
           border: "1px solid #E5E7EB",
@@ -660,7 +700,14 @@ function OperatorCard({ op }: { op: OperatorRow }) {
           padding: 14,
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            gap: 8,
+          }}
+        >
           <div>
             <div style={{ fontSize: 16, fontWeight: 900, color: "#111827" }}>
               {op.company_name || "Safari operator"}
@@ -694,7 +741,15 @@ function OperatorCard({ op }: { op: OperatorRow }) {
   );
 }
 
-function StepCard({ step, title, text }: { step: string; title: string; text: string }) {
+function StepCard({
+  step,
+  title,
+  text,
+}: {
+  step: string;
+  title: string;
+  text: string;
+}) {
   return (
     <div
       style={{
@@ -716,7 +771,14 @@ function StepCard({ step, title, text }: { step: string; title: string; text: st
       >
         Step {step}
       </div>
-      <div style={{ fontSize: 15, fontWeight: 800, color: "#111827", marginBottom: 4 }}>
+      <div
+        style={{
+          fontSize: 15,
+          fontWeight: 800,
+          color: "#111827",
+          marginBottom: 4,
+        }}
+      >
         {title}
       </div>
       <div style={{ fontSize: 13, color: "#4B5563" }}>{text}</div>
@@ -734,7 +796,14 @@ function TrustItem({ title, text }: { title: string; text: string }) {
         padding: 12,
       }}
     >
-      <div style={{ fontWeight: 800, color: "#111827", marginBottom: 6, fontSize: 14 }}>
+      <div
+        style={{
+          fontWeight: 800,
+          color: "#111827",
+          marginBottom: 6,
+          fontSize: 14,
+        }}
+      >
         {title}
       </div>
       <div style={{ color: "#374151", fontSize: 13 }}>{text}</div>
