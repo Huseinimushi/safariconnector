@@ -10,43 +10,21 @@ export function proxy(req: NextRequest) {
   const isAdminHost = host.startsWith("admin.");
   const isOperatorHost = host.startsWith("operator.");
 
-  /* ================= ADMIN SUBDOMAIN =================
+  /* ========== ADMIN SUBDOMAIN (SAFE MODE) ==========
      admin.safariconnector.com
-     - Main app routes live under /admin/*
-     - Accept BOTH:
-       - /login  (clean)
-       - /admin/login  (direct)
-     - Avoid ALL redirects inside this subdomain to prevent loops
-  ===================================================== */
+     → NO special rewrites, NO redirects.
+     → You MUST use real paths: /admin, /admin/login, etc.
+  ==================================================== */
   if (isAdminHost) {
-    // 1) Root: show /admin (internal)
-    if (pathname === "/") {
-      url.pathname = "/admin";
-      return NextResponse.rewrite(url); // URL stays "/"
-    }
-
-    // 2) Clean login URL -> use internal /admin/login, BUT keep URL as "/login"
-    if (pathname === "/login") {
-      const internal = url.clone();
-      internal.pathname = "/admin/login";
-      return NextResponse.rewrite(internal); // no redirect, no URL change
-    }
-
-    // 3) If someone types /admin/login or any /admin/* directly, DO NOT touch it
-    if (pathname.startsWith("/admin")) {
-      return NextResponse.next(); // let Next.js render the real page, no proxy redirect
-    }
-
-    // 4) Any other path on admin subdomain -> map into /admin/*
-    url.pathname = `/admin${pathname}`;
-    return NextResponse.rewrite(url);
+    return NextResponse.next();
   }
 
-  /* =============== OPERATOR SUBDOMAIN =================
+  /* =============== OPERATOR SUBDOMAIN ===============
      operator.safariconnector.com
-     - Internal app under /operators/*
-     - Clean URLs: "/", "/login"
-  ===================================================== */
+     - "/"       → /operators
+     - "/login"  → /operators/login
+     - any other → /operators/<path>
+  ==================================================== */
   if (isOperatorHost) {
     if (pathname === "/") {
       url.pathname = "/operators";
@@ -69,14 +47,13 @@ export function proxy(req: NextRequest) {
 
   /* ================= ROOT DOMAIN =====================
      safariconnector.com / www.safariconnector.com
-     - Block direct access to /admin and /operators
+     (optional) block direct /admin, /operators on main site
   ===================================================== */
   if (pathname.startsWith("/admin") || pathname.startsWith("/operators")) {
     url.pathname = "/";
     return NextResponse.redirect(url);
   }
 
-  // Normal main-site request
   return NextResponse.next();
 }
 

@@ -1,15 +1,10 @@
 // src/app/admin/layout.tsx
-import { ReactNode } from "react";
-import { redirect } from "next/navigation";
-import { getUserRole } from "@/lib/rolesServer";
+import type { ReactNode } from "react";
 
-export default async function AdminLayout({ children }: { children: ReactNode }) {
-  const role = await getUserRole();
-
-  // Not logged in OR wrong role → send to admin login
-  if (role !== "admin") {
-    redirect("/admin/login");
-  }
-
+export default function AdminRootLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
   return <>{children}</>;
 }

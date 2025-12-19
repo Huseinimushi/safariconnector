@@ -6,8 +6,6 @@ import { supabase } from "@/lib/supabaseClient";
 
 const BG_SAND = "#F4F3ED";
 const BRAND_GREEN = "#0B6B3A";
-
-// Admins allowed to access this panel
 const ADMIN_EMAILS = ["admin@safariconnector.com"].map((e) =>
   e.toLowerCase()
 );
@@ -31,7 +29,6 @@ export default function AdminLoginPage() {
 
     setLoading(true);
     try {
-      // 1) Normal Supabase password sign-in (client side)
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -46,14 +43,13 @@ export default function AdminLoginPage() {
       const user = data.user;
       const userEmail = (user.email || "").toLowerCase();
 
-      // 2) Simple admin allow-list
       if (!ADMIN_EMAILS.includes(userEmail)) {
         await supabase.auth.signOut();
         setErrorMsg("This account is not allowed to access the admin panel.");
         return;
       }
 
-      // 3) Success → go to admin dashboard
+      // Successful login – go to /admin (no Next redirect(), only client nav)
       router.replace("/admin");
       router.refresh();
     } catch (err: any) {
@@ -118,7 +114,7 @@ export default function AdminLoginPage() {
               fontSize: 13,
               backgroundColor: "#FEE2E2",
               color: "#B91C1C",
-              border: "1px solid #FECACA", // ← fixed
+              border: "1px solid #FECACA",
             }}
           >
             {errorMsg}
