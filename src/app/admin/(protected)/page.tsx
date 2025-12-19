@@ -37,7 +37,7 @@ type TripRow = {
 
 type BookingRow = {
   id: string;
-  code: string | null;
+  booking_code: string | null; // NOTE: renamed from "code"
   traveller_name: string | null;
   operator_company_name: string | null;
   total_price: number | null;
@@ -147,10 +147,11 @@ function AdminDashboardContent() {
             .order("created_at", { ascending: false })
             .limit(5),
 
+          // NOTE: booking_code instead of code
           supabase
             .from("bookings")
             .select(
-              "id, code, traveller_name, operator_company_name, total_price, currency, status, created_at",
+              "id, booking_code, traveller_name, operator_company_name, total_price, currency, status, created_at",
               { count: "exact" }
             )
             .order("created_at", { ascending: false })
@@ -341,6 +342,7 @@ function AdminDashboardContent() {
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {/* Quick links */}
             <div
               style={{
                 display: "flex",
@@ -848,7 +850,7 @@ function AdminDashboardContent() {
                               color: BRAND.ink,
                             }}
                           >
-                            {b.code || "Booking"}
+                            {b.booking_code || "Booking"}
                           </div>
                           <div
                             style={{
