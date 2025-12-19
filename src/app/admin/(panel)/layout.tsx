@@ -1,25 +1,12 @@
 // src/app/admin/(panel)/layout.tsx
-import { ReactNode } from "react";
-import { redirect } from "next/navigation";
-import { headers } from "next/headers";
-import { getUserRole } from "@/lib/rolesServer";
 
-export default async function AdminPanelLayout({
+import React from "react";
+
+export default function AdminPanelLayout({
   children,
 }: {
-  children: ReactNode;
+  children: React.ReactNode;
 }) {
-  const role = await getUserRole();
-
-  if (role !== "admin") {
-    const host = (await headers()).get("host")?.toLowerCase() || "";
-
-    // On admin subdomain -> clean URL
-    if (host.startsWith("admin.")) redirect("/login");
-
-    // Fallback (root domain / local dev without host header cases)
-    redirect("/admin/login");
-  }
-
+  // No redirect here; admin pages under (panel) should just render.
   return <>{children}</>;
 }
