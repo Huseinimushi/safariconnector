@@ -1,6 +1,7 @@
 // src/app/layout.tsx
 import type { Metadata } from "next";
 import React from "react";
+import { headers } from "next/headers";
 
 import { AuthProvider } from "@/components/AuthProvider";
 import Nav from "@/components/Nav";
@@ -11,11 +12,17 @@ export const metadata: Metadata = {
   description: "AI powered safari marketplace",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const h = await headers();
+  const host = (h.get("host") || "").toLowerCase();
+
+  const isAdminHost = host.startsWith("admin.");
+  const isOperatorHost = host.startsWith("operator.");
+
   return (
     <html lang="en">
       <head>
@@ -28,16 +35,145 @@ export default function RootLayout({
       <body>
         {/* 🔐 Global auth (session available every page) */}
         <AuthProvider>
-          {/* 🔝 Your existing header/nav */}
-          <Nav />
-
-          {/* 📄 Page content */}
-          <main>{children}</main>
-
-          {/* 🔚 Your existing footer */}
-          <Footer />
+          {isAdminHost ? (
+            <>
+              <AdminHeader />
+              <main>{children}</main>
+            </>
+          ) : isOperatorHost ? (
+            <>
+              <OperatorHeader />
+              <main>{children}</main>
+            </>
+          ) : (
+            <>
+              {/* 🌍 Main public site */}
+              <Nav />
+              <main>{children}</main>
+              <Footer />
+            </>
+          )}
         </AuthProvider>
       </body>
     </html>
+  );
+}
+
+/* ================== CUSTOM HEADERS ================== */
+
+function AdminHeader() {
+  return (
+    <header
+      style={{
+        width: "100%",
+        borderBottom: "1px solid #E5E7EB",
+        backgroundColor: "#0B6B3A",
+        color: "#F9FAFB",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 1240,
+          margin: "0 auto",
+          padding: "10px 16px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 800,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              opacity: 0.9,
+            }}
+          >
+            Safari Connector
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              opacity: 0.85,
+            }}
+          >
+            Admin control center
+          </div>
+        </div>
+
+        <div
+          style={{
+            fontSize: 12,
+            opacity: 0.9,
+            textAlign: "right",
+          }}
+        >
+          <div>Restricted access</div>
+          <div style={{ fontSize: 11, opacity: 0.8 }}>
+            For internal marketplace operations only
+          </div>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function OperatorHeader() {
+  return (
+    <header
+      style={{
+        width: "100%",
+        borderBottom: "1px solid #E5E7EB",
+        backgroundColor: "#0F172A",
+        color: "#E5F3EC",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 1240,
+          margin: "0 auto",
+          padding: "10px 16px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: 14,
+              fontWeight: 800,
+              letterSpacing: "0.12em",
+              textTransform: "uppercase",
+              opacity: 0.9,
+            }}
+          >
+            Safari Connector
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              opacity: 0.9,
+            }}
+          >
+            Operator workspace
+          </div>
+        </div>
+
+        <div
+          style={{
+            fontSize: 11,
+            textAlign: "right",
+            opacity: 0.85,
+          }}
+        >
+          <div>Manage trips, quotes & bookings</div>
+        </div>
+      </div>
+    </header>
   );
 }
