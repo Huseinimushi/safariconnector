@@ -1,4 +1,4 @@
-// src/app/operators/inbox/page.tsx
+// src/app/inbox/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -182,7 +182,7 @@ export default function OperatorInboxPage() {
         it.id === item.id ? { ...it, has_unread: false } : it
       )
     );
-    router.push(`/operators/inbox/${item.id}`);
+    router.push(`/inbox/${item.id}`);
   };
 
   const unreadCount = items.filter((i) => i.has_unread).length;
@@ -209,7 +209,7 @@ export default function OperatorInboxPage() {
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <button
               type="button"
-              onClick={() => router.push("/operators/dashboard")}
+              onClick={() => router.push("/dashboard")}
               style={{
                 height: 32,
                 width: 32,

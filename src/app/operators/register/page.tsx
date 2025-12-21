@@ -1,4 +1,4 @@
-// src/app/operators/register/page.tsx
+// src/app/register/page.tsx
 "use client";
 
 import React, { useEffect, useState, type CSSProperties } from "react";
@@ -70,7 +70,7 @@ export default function OperatorRegisterPage() {
       }
 
       if (!user) {
-        router.replace("/operators/login");
+        router.replace("/login");
         return;
       }
 
@@ -159,7 +159,7 @@ export default function OperatorRegisterPage() {
         console.error("auth error during save:", userError);
         setMsg("❌ Authentication problem. Please log in again as operator.");
         setSaving(false);
-        router.replace("/operators/login");
+        router.replace("/login");
         return;
       }
 
@@ -232,7 +232,7 @@ export default function OperatorRegisterPage() {
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut();
-      router.replace("/operators/login");
+      router.replace("/login");
     } catch (e) {
       console.error(e);
     }

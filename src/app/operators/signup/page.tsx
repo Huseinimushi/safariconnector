@@ -25,7 +25,7 @@ export default function OperatorSignupPage() {
     const checkUser = async () => {
       const { data, error } = await supabase.auth.getUser();
       if (!error && data?.user) {
-        router.replace("/operators/register");
+        router.replace("/register");
         return;
       }
       setLoading(false);
@@ -84,7 +84,7 @@ export default function OperatorSignupPage() {
 
       // redirect to profile page
       setTimeout(() => {
-        router.replace("/operators/register");
+        router.replace("/register");
       }, 1200);
     } catch (e: any) {
       console.error(e);
@@ -95,7 +95,7 @@ export default function OperatorSignupPage() {
   };
 
   const handleGoToLogin = () => {
-    router.push("/operators/login");
+    router.push("/login");
   };
 
   if (loading) {

@@ -1,4 +1,4 @@
-// src/app/operators/bookings/page.tsx
+// src/app/bookings/page.tsx
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -355,7 +355,7 @@ export default function OperatorBookingsPage() {
         setConfirmingId(bookingId);
         setErrorMsg(null);
 
-        const res = await fetch("/api/operators/bookings/confirm", {
+        const res = await fetch("/api/bookings/confirm", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ booking_id: bookingId }),
@@ -459,7 +459,7 @@ export default function OperatorBookingsPage() {
 
           <button
             type="button"
-            onClick={() => router.push("/operators/dashboard")}
+            onClick={() => router.push("/dashboard")}
             style={{
               borderRadius: 999,
               padding: "7px 14px",
@@ -842,7 +842,7 @@ export default function OperatorBookingsPage() {
                     >
                       {b.trip_id && (
                         <Link
-                          href={`/operators/trips/${encodeURIComponent(b.trip_id)}/edit`}
+                          href={`/trips/${encodeURIComponent(b.trip_id)}/edit`}
                           style={{
                             padding: "5px 10px",
                             borderRadius: 999,
@@ -860,7 +860,7 @@ export default function OperatorBookingsPage() {
 
                       {b.quote_id && (
                         <Link
-                          href={`/operators/quotes?quote_id=${encodeURIComponent(b.quote_id)}`}
+                          href={`/quotes?quote_id=${encodeURIComponent(b.quote_id)}`}
                           style={{
                             padding: "5px 10px",
                             borderRadius: 999,

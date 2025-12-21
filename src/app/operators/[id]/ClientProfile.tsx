@@ -77,7 +77,7 @@ export default function OperatorProfileClient({ id }: { id: string }) {
   }, [id]);
 
   const handleAddTrip = () => {
-    router.push(`/operators/trips/new?operatorId=${id}`);
+    router.push(`/trips/new?operatorId=${id}`);
   };
 
   if (loading) {

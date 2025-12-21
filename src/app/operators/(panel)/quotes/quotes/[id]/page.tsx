@@ -315,7 +315,7 @@ export default function OperatorQuoteChatPage() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <Link
-            href="/operators/quotes"
+            href="/quotes"
             style={{
               borderRadius: 999,
               padding: "7px 14px",

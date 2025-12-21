@@ -1,4 +1,4 @@
-// src/app/operators/profile/page.tsx
+// src/app/profile/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -280,7 +280,7 @@ export default function OperatorProfilePage() {
         </div>
 
         <Link
-          href="/operators/dashboard"
+          href="/dashboard"
           style={{
             display: "inline-flex",
             alignItems: "center",

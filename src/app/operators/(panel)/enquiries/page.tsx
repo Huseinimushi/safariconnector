@@ -1,4 +1,4 @@
-// src/app/operators/enquiries/page.tsx
+// src/app/enquiries/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -156,7 +156,7 @@ export default function OperatorEnquiriesPage() {
           </p>
         </div>
 
-        <a href="/operators/dashboard" style={backBtn}>
+        <a href="/dashboard" style={backBtn}>
           ← Back to dashboard
         </a>
       </div>
@@ -257,7 +257,7 @@ export default function OperatorEnquiriesPage() {
                   confirmed booking.
                 </span>
                 <Link
-                  href={`/operators/quotes?from_enquiry=${encodeURIComponent(
+                  href={`/quotes?from_enquiry=${encodeURIComponent(
                     r.id
                   )}`}
                   style={{

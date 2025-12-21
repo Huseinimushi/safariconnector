@@ -132,7 +132,7 @@ export default function OperatorEditPage() {
         setMsg("✅ Profile updated successfully.");
         // optional: rudi dashboard baada ya sekunde chache
         setTimeout(() => {
-          router.push("/operators/dashboard");
+          router.push("/dashboard");
         }, 1000);
       }
     } catch (e: any) {
@@ -175,7 +175,7 @@ export default function OperatorEditPage() {
         <section style={{ marginBottom: 20 }}>
           <button
             type="button"
-            onClick={() => router.push("/operators/dashboard")}
+            onClick={() => router.push("/dashboard")}
             style={{
               border: "none",
               background: "transparent",
@@ -408,7 +408,7 @@ export default function OperatorEditPage() {
           >
             <button
               type="button"
-              onClick={() => router.push("/operators/dashboard")}
+              onClick={() => router.push("/dashboard")}
               style={{
                 padding: "9px 16px",
                 borderRadius: 999,

@@ -93,7 +93,7 @@ export default function EditTripPage({
       } = await supabase.auth.getUser();
 
       if (userError || !user) {
-        router.push("/operators/login");
+        router.push("/login");
         return;
       }
 
@@ -297,7 +297,7 @@ export default function EditTripPage({
 
       setMsg("✅ Trip updated successfully.");
       setSaving(false);
-      router.push("/operators/trips");
+      router.push("/trips");
     } catch (err) {
       console.error(err);
       setMsg("❌ Unexpected error while saving changes.");
@@ -333,7 +333,7 @@ export default function EditTripPage({
         return;
       }
 
-      router.push("/operators/trips");
+      router.push("/trips");
     } finally {
       setSaving(false);
     }

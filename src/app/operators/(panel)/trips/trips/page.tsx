@@ -1,4 +1,4 @@
-// src/app/operators/trips/page.tsx
+// src/app/trips/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -253,7 +253,7 @@ export default function OperatorTripsPage() {
 
         {/* back to dashboard button */}
         <Link
-          href="/operators/dashboard"
+          href="/dashboard"
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -354,7 +354,7 @@ export default function OperatorTripsPage() {
 
           {canPostTrips ? (
             <Link
-              href="/operators/trips/new"
+              href="/trips/new"
               style={{
                 padding: "8px 14px",
                 borderRadius: 999,
@@ -505,7 +505,7 @@ export default function OperatorTripsPage() {
                         |
                       </span>
                       <Link
-                        href={`/operators/trips/${trip.id}`} // edit route yako
+                        href={`/trips/${trip.id}`} // edit route yako
                         style={{
                           color: "#2563EB",
                           textDecoration: "none",

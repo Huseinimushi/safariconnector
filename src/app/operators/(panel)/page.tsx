@@ -46,7 +46,7 @@ export default function OperatorsPage() {
 
       if (!user) {
         // not logged in → go to operator login
-        router.push("/operators/login");
+        router.push("/login");
         return;
       }
 
@@ -67,7 +67,7 @@ export default function OperatorsPage() {
           opError.code === "PGRST116" ||
           opError.message?.includes("No rows")
         ) {
-          router.push("/operators/register");
+          router.push("/register");
           return;
         }
 
@@ -84,7 +84,7 @@ export default function OperatorsPage() {
   }, [router]);
 
   const handleGoToTrips = () => {
-    router.push("/operators/trips");
+    router.push("/trips");
   };
 
   const handleLogout = async () => {
@@ -92,7 +92,7 @@ export default function OperatorsPage() {
     setMsg(null);
     try {
       await supabase.auth.signOut();
-      router.push("/operators/login");
+      router.push("/login");
     } catch (err: any) {
       console.error("logout error:", err);
       setMsg("❌ Failed to log out. Please try again.");

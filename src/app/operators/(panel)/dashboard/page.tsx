@@ -1,4 +1,4 @@
-// src/app/operators/dashboard/page.tsx
+// src/app/dashboard/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -162,7 +162,7 @@ export default function OperatorDashboardPage() {
     } catch (err) {
       console.error("operator logout error:", err);
     } finally {
-      router.replace("/operators/login");
+      router.replace("/login");
     }
   };
 
@@ -579,7 +579,7 @@ export default function OperatorDashboardPage() {
             }}
           >
             <Link
-              href="/operators/trips"
+              href="/trips"
               style={{
                 color: "#14532D",
                 textDecoration: "none",
@@ -636,7 +636,7 @@ export default function OperatorDashboardPage() {
             }}
           >
             <Link
-              href="/operators/bookings"
+              href="/bookings"
               style={{
                 color: "#14532D",
                 textDecoration: "none",
@@ -697,7 +697,7 @@ export default function OperatorDashboardPage() {
           >
             {/* Manual enquiries list */}
             <Link
-              href="/operators/enquiries"
+              href="/enquiries"
               style={{
                 color: "#14532D",
                 textDecoration: "none",
@@ -708,7 +708,7 @@ export default function OperatorDashboardPage() {
             </Link>
             {/* AI quote threads */}
             <Link
-              href="/operators/quotes"
+              href="/quotes"
               style={{
                 color: "#14532D",
                 textDecoration: "none",
@@ -854,7 +854,7 @@ export default function OperatorDashboardPage() {
             }}
           >
             <Link
-              href="/operators/profile"
+              href="/profile"
               style={{
                 color: "#14532D",
                 textDecoration: "none",
@@ -1010,7 +1010,7 @@ export default function OperatorDashboardPage() {
             <button
               type="button"
               onClick={() => {
-                if (isApproved) router.push("/operators/trips");
+                if (isApproved) router.push("/trips");
               }}
               disabled={!isApproved}
               style={{
@@ -1147,7 +1147,7 @@ export default function OperatorDashboardPage() {
                 messageThreads.map((t) => (
                   <Link
                     key={t.quote_id}
-                    href={`/operators/quotes?quote_id=${encodeURIComponent(
+                    href={`/quotes?quote_id=${encodeURIComponent(
                       t.quote_id
                     )}`}
                     onClick={() => {
@@ -1262,7 +1262,7 @@ export default function OperatorDashboardPage() {
                 Tap a conversation to go directly to that enquiry chat.
               </span>
               <Link
-                href="/operators/quotes"
+                href="/quotes"
                 onClick={() => setShowMessagesPopup(false)}
                 style={{
                   textDecoration: "none",

@@ -362,7 +362,7 @@ export default function OperatorBookingDetailPage() {
         >
           {booking?.quote_id && (
             <Link
-              href={`/operators/quotes`}
+              href={`/quotes`}
               style={{
                 borderRadius: 999,
                 padding: "7px 14px",
@@ -379,7 +379,7 @@ export default function OperatorBookingDetailPage() {
           )}
           <button
             type="button"
-            onClick={() => router.push("/operators/quotes")}
+            onClick={() => router.push("/quotes")}
             style={{
               borderRadius: 999,
               padding: "7px 14px",

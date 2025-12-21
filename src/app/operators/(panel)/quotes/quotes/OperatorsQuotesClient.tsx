@@ -1,4 +1,4 @@
-// src/app/operators/quotes/OperatorsQuotesClient.tsx
+// src/app/quotes/OperatorsQuotesClient.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -461,7 +461,7 @@ export default function OperatorsQuotesClient() {
 
     const params = new URLSearchParams(searchParams?.toString() || "");
     params.set("enquiry_id", String(id));
-    router.replace(`/operators/quotes?${params.toString()}`);
+    router.replace(`/quotes?${params.toString()}`);
   };
 
   const handleSendMessage = async () => {
@@ -656,7 +656,7 @@ export default function OperatorsQuotesClient() {
         return;
       }
 
-      const res = await fetch("/api/operators/bookings/confirm", {
+      const res = await fetch("/api/bookings/confirm", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -741,7 +741,7 @@ export default function OperatorsQuotesClient() {
         </div>
 
         <Link
-          href="/operators/dashboard"
+          href="/dashboard"
           style={{
             borderRadius: 999,
             padding: "7px 14px",
@@ -961,7 +961,7 @@ export default function OperatorsQuotesClient() {
                       <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
                         <button
                           type="button"
-                          onClick={() => router.push(`/operators/bookings/${booking.id}`)}
+                          onClick={() => router.push(`/bookings/${booking.id}`)}
                           style={{
                             borderRadius: 999,
                             padding: "4px 10px",

@@ -1,4 +1,4 @@
-// src/app/operators/inbox/[id]/page.tsx
+// src/app/inbox/[id]/page.tsx
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
@@ -186,7 +186,7 @@ export default function OperatorChatPage() {
         <div style={{ display: "flex", alignItems: "center", marginBottom: 16, gap: 8 }}>
           <button
             type="button"
-            onClick={() => router.push("/operators/inbox")}
+            onClick={() => router.push("/inbox")}
             style={{
               height: 32,
               width: 32,

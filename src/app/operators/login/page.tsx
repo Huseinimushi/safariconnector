@@ -1,4 +1,4 @@
-// src/app/operators/login/page.tsx
+// src/app/login/page.tsx
 "use client";
 
 import React, { useState } from "react";
@@ -56,16 +56,16 @@ export default function OperatorLoginPage() {
     if (opError) {
       console.error("operator lookup error:", opError);
       // hata kama kuna error ya lookup, tumpeleke dashboard
-      router.push("/operators/dashboard");
+      router.push("/dashboard");
       setLoading(false);
       return;
     }
 
     if (!op) {
       // hana profile bado – mpeleke kwenye registration
-      router.push("/operators/register");
+      router.push("/register");
     } else {
-      router.push("/operators/dashboard");
+      router.push("/dashboard");
     }
 
     setLoading(false);
@@ -218,7 +218,7 @@ export default function OperatorLoginPage() {
           }}
         >
           Don&apos;t have an operator account?{" "}
-          <a href="/operators/register" style={{ color: BRAND_GREEN }}>
+          <a href="/register" style={{ color: BRAND_GREEN }}>
             Apply as operator
           </a>
         </p>

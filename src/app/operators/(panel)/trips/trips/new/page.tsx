@@ -1,4 +1,4 @@
-// src/app/operators/trips/new/page.tsx
+// src/app/trips/new/page.tsx
 "use client";
 
 import React, { useEffect, useState, Suspense } from "react";
@@ -173,7 +173,7 @@ function NewTripPageInner() {
       } = await supabase.auth.getUser();
 
       if (userError || !user) {
-        router.push("/operators/login");
+        router.push("/login");
         return;
       }
 
@@ -463,7 +463,7 @@ function NewTripPageInner() {
 
       setMsg("✅ Trip created successfully.");
       setSaving(false);
-      router.push("/operators/trips");
+      router.push("/trips");
     } catch (err) {
       console.error("trip save exception:", err);
       setMsg("❌ Something went wrong while saving your trip.");
