@@ -6,11 +6,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-// ===== Brand tokens (same spirit as Option A, but Safari Connector colors) =====
 const BRAND = {
   bg: "#F4F3ED",
-  shell: "#0B1720",
-  sidebar: "#111827",
+  shell: "#10352A", // deep Safari green / navy-green
+  sidebar: "#1B4D3E",
   panel: "#FFFFFF",
   borderSoft: "#E1E5ED",
   borderSubtle: "#CBD5E1",
@@ -40,7 +39,7 @@ export default function OperatorPanelLayout({
   const [companyName, setCompanyName] = useState<string | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(true);
 
-  // --- Load operator company name (best-effort, fail silently) ---
+  // ===== Load operator company name (best-effort) =====
   useEffect(() => {
     let isMounted = true;
 
@@ -53,7 +52,6 @@ export default function OperatorPanelLayout({
           return;
         }
 
-        // try operators_view first (preferred)
         const { data, error } = await supabase
           .from("operators_view")
           .select("company_name")
@@ -90,30 +88,31 @@ export default function OperatorPanelLayout({
     } catch (e) {
       console.error("operator logout error:", e);
     } finally {
-      // On operator subdomain, /login is proxied → /operators/login
-      router.replace("/login");
+      router.replace("/login"); // on operator host → /operators/login
     }
   };
 
-  // browser paths (proxy will rewrite → /operators/...)
-  const NAV_ITEMS: { href: string; label: string; key: string }[] = [
-    { href: "/dashboard", label: "Dashboard", key: "dashboard" },
-    { href: "/trips", label: "Trips", key: "trips" },
-    { href: "/bookings", label: "Bookings", key: "bookings" },
-    { href: "/enquiries", label: "Enquiries", key: "enquiries" },
-    { href: "/quotes", label: "Quotes", key: "quotes" },
-    { href: "/inbox", label: "Messages", key: "inbox" },
-    { href: "/profile", label: "Profile", key: "profile" },
+  // Browser-visible paths (proxy rewrites to /operators/...)
+  const NAV_ITEMS: { href: string; label: string; icon: string }[] = [
+    { href: "/dashboard", label: "Dashboard", icon: "🏠" },
+    { href: "/trips", label: "Trips", icon: "🗺️" },
+    { href: "/bookings", label: "Bookings", icon: "📑" },
+    { href: "/enquiries", label: "Enquiries", icon: "📬" },
+    { href: "/quotes", label: "Quotes", icon: "💬" },
+    { href: "/inbox", label: "Messages", icon: "✉️" },
+    { href: "/profile", label: "Profile", icon: "👤" },
   ];
 
   const isActive = (href: string) => {
     if (!pathname) return false;
-    if (href === "/dashboard") {
-      // dashboard is special: match / or /dashboard when proxied
-      return pathname === "/dashboard";
-    }
+    if (href === "/dashboard") return pathname === "/dashboard";
     return pathname.startsWith(href);
   };
+
+  const currentSection = (() => {
+    const found = NAV_ITEMS.find((i) => isActive(i.href));
+    return found?.label ?? "Dashboard";
+  })();
 
   return (
     <div
@@ -123,139 +122,159 @@ export default function OperatorPanelLayout({
         display: "flex",
       }}
     >
-      {/* ====== LEFT RAIL / SIDEBAR ====== */}
+      {/* ===== LEFT SIDEBAR ===== */}
       <aside
         style={{
-          width: 80,
-          background: BRAND.sidebar,
+          width: 96,
+          background: `linear-gradient(180deg, ${BRAND.sidebar} 0%, ${BRAND.shell} 100%)`,
           color: "#E5E7EB",
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          padding: "18px 12px",
-          gap: 18,
+          padding: "18px 10px 16px",
+          gap: 16,
         }}
       >
-        {/* Logo pill */}
+        {/* Logo / SC badge */}
         <Link
           href="/dashboard"
           style={{
-            width: 44,
-            height: 44,
-            borderRadius: 14,
-            border: "1px solid rgba(248, 250, 252, 0.22)",
+            width: 50,
+            height: 50,
+            borderRadius: 18,
+            border: "1px solid rgba(248,250,252,0.28)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             background:
-              "linear-gradient(135deg, rgba(212,160,23,0.08), rgba(11,107,58,0.32))",
-            fontSize: 18,
+              "radial-gradient(circle at 0% 0%, rgba(212,160,23,0.5), rgba(1,18,12,0.9))",
+            fontSize: 19,
             fontWeight: 900,
             color: "#F9FAFB",
+            textDecoration: "none",
           }}
+          title="Safari Connector · Operator workspace"
         >
           SC
         </Link>
 
-        {/* Vertical divider */}
         <div
           style={{
             width: 1,
-            flexGrow: 0,
-            height: 22,
+            height: 26,
             background:
-              "linear-gradient(to bottom, transparent, rgba(148,163,184,0.5), transparent)",
-            margin: "2px 0 6px",
+              "linear-gradient(to bottom, transparent, rgba(148,163,184,0.7), transparent)",
+            marginBottom: 2,
           }}
         />
 
-        {/* Main nav icons (first letter style) */}
+        {/* Main nav icons */}
         <div
           style={{
             display: "flex",
             flexDirection: "column",
-            gap: 10,
+            gap: 8,
             flexGrow: 1,
+            width: "100%",
+            alignItems: "center",
           }}
         >
           {NAV_ITEMS.map((item) => {
             const active = isActive(item.href);
             return (
               <Link
-                key={item.key}
+                key={item.href}
                 href={item.href}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 14,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  textDecoration: "none",
-                  fontSize: 16,
-                  fontWeight: 800,
-                  border: active
-                    ? "1px solid rgba(248, 250, 252, 0.9)"
-                    : "1px solid transparent",
-                  backgroundColor: active
-                    ? "rgba(15, 23, 42, 0.9)"
-                    : "rgba(15, 23, 42, 0.35)",
-                  color: active ? "#F9FAFB" : "#CBD5F5",
-                  boxShadow: active
-                    ? "0 0 0 1px rgba(11, 107, 58, 0.35)"
-                    : "none",
-                }}
                 title={item.label}
+                style={{
+                  width: "100%",
+                  textDecoration: "none",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "4px 0",
+                }}
               >
-                {item.label.charAt(0)}
+                <div
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 999,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: active
+                      ? "1px solid rgba(248,250,252,0.95)"
+                      : "1px solid rgba(148,163,184,0.45)",
+                    backgroundColor: active
+                      ? "rgba(15,23,42,0.15)"
+                      : "rgba(15,23,42,0.25)",
+                    boxShadow: active
+                      ? "0 0 0 2px rgba(212,160,23,0.65)"
+                      : "none",
+                    fontSize: 20,
+                  }}
+                >
+                  {item.icon}
+                </div>
+                <div
+                  style={{
+                    fontSize: 11,
+                    fontWeight: active ? 700 : 500,
+                    color: active ? "#F9FAFB" : "#CBD5F5",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {item.label}
+                </div>
               </Link>
             );
           })}
         </div>
 
-        {/* Bottom shortcuts */}
+        {/* Bottom: link to main + logout */}
         <div
           style={{
             display: "flex",
             flexDirection: "column",
             gap: 10,
             marginTop: "auto",
+            alignItems: "center",
           }}
         >
-          {/* Main marketplace shortcut */}
           <a
             href="https://safariconnector.com"
             target="_blank"
             rel="noreferrer"
             style={{
-              width: 40,
-              height: 40,
+              width: 42,
+              height: 42,
               borderRadius: 999,
-              border: "1px solid rgba(248,250,252,0.26)",
+              border: "1px solid rgba(248,250,252,0.35)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               textDecoration: "none",
-              fontSize: 13,
+              fontSize: 11,
               fontWeight: 800,
               color: "#F9FAFB",
               background:
-                "radial-gradient(circle at 30% 0%, rgba(212,160,23,0.4), rgba(15,23,42,0.9))",
+                "radial-gradient(circle at 30% 0%, rgba(212,160,23,0.6), rgba(1,17,11,0.95))",
             }}
-            title="Open main marketplace"
+            title="Open Safari Connector main site"
           >
-            SC
+            Main
           </a>
 
-          {/* Logout icon button */}
           <button
             type="button"
             onClick={handleLogout}
             style={{
-              width: 40,
-              height: 40,
+              width: 42,
+              height: 42,
               borderRadius: 999,
-              border: "1px solid rgba(248,250,252,0.14)",
+              border: "1px solid rgba(248,250,252,0.18)",
               backgroundColor: "transparent",
               color: "#FCA5A5",
               fontSize: 18,
@@ -269,7 +288,7 @@ export default function OperatorPanelLayout({
         </div>
       </aside>
 
-      {/* ====== MAIN SHELL ====== */}
+      {/* ===== MAIN SHELL ===== */}
       <div
         style={{
           flex: 1,
@@ -278,10 +297,10 @@ export default function OperatorPanelLayout({
           flexDirection: "column",
         }}
       >
-        {/* Top header bar */}
+        {/* Header */}
         <header
           style={{
-            height: 70,
+            height: 78,
             borderBottom: `1px solid ${BRAND.borderSoft}`,
             backgroundColor: BRAND.panel,
             display: "flex",
@@ -294,27 +313,27 @@ export default function OperatorPanelLayout({
           }}
         >
           <div>
+            {/* Company name big */}
             <div
               style={{
-                fontSize: 11,
-                textTransform: "uppercase",
-                letterSpacing: "0.16em",
-                color: BRAND.subtle,
-                marginBottom: 2,
-              }}
-            >
-              Safari Connector · Operator workspace
-            </div>
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 800,
+                fontSize: 22,
+                fontWeight: 900,
                 color: BRAND.primaryDark,
               }}
             >
               {loadingProfile
-                ? "Loading company…"
-                : companyName || "Your company"}
+                ? "Loading company..."
+                : companyName || "Your Operator Company"}
+            </div>
+            <div
+              style={{
+                marginTop: 3,
+                fontSize: 12,
+                color: BRAND.muted,
+              }}
+            >
+              Operator workspace ·{" "}
+              <span style={{ fontWeight: 600 }}>{currentSection}</span>
             </div>
           </div>
 
@@ -325,7 +344,6 @@ export default function OperatorPanelLayout({
               gap: 10,
             }}
           >
-            {/* Quick link to main marketplace */}
             <a
               href="https://safariconnector.com"
               target="_blank"
@@ -341,18 +359,17 @@ export default function OperatorPanelLayout({
                 color: BRAND.primaryDark,
               }}
             >
-              Go to main marketplace
+              View main marketplace
             </a>
 
-            {/* Simple tag showing environment */}
             <div
               style={{
-                padding: "6px 10px",
+                padding: "6px 12px",
                 borderRadius: 999,
                 border: `1px solid ${BRAND.borderSubtle}`,
                 fontSize: 11,
                 textTransform: "uppercase",
-                letterSpacing: "0.14em",
+                letterSpacing: "0.16em",
                 color: BRAND.subtle,
                 backgroundColor: "#F9FAFB",
               }}
@@ -362,7 +379,7 @@ export default function OperatorPanelLayout({
           </div>
         </header>
 
-        {/* Content area */}
+        {/* Content */}
         <main
           style={{
             flex: 1,
