@@ -37,7 +37,6 @@ type TripRow = {
 
 type BookingRow = {
   id: string;
-  booking_code: string | null; // NOTE: renamed from "code"
   traveller_name: string | null;
   operator_company_name: string | null;
   total_price: number | null;
@@ -147,11 +146,11 @@ function AdminDashboardContent() {
             .order("created_at", { ascending: false })
             .limit(5),
 
-          // NOTE: booking_code instead of code
+          // BOOKINGS: no booking_code here, only existing columns
           supabase
             .from("bookings")
             .select(
-              "id, booking_code, traveller_name, operator_company_name, total_price, currency, status, created_at",
+              "id, traveller_name, operator_company_name, total_price, currency, status, created_at",
               { count: "exact" }
             )
             .order("created_at", { ascending: false })
@@ -850,7 +849,9 @@ function AdminDashboardContent() {
                               color: BRAND.ink,
                             }}
                           >
-                            {b.booking_code || "Booking"}
+                            {b.id
+                              ? `Booking ${b.id.slice(0, 8)}`
+                              : "Booking"}
                           </div>
                           <div
                             style={{
@@ -860,7 +861,8 @@ function AdminDashboardContent() {
                             }}
                           >
                             {b.traveller_name || "Traveller n/a"} ·{" "}
-                            {b.operator_company_name || "Operator n/a"}
+                            {b.operator_company_name ||
+                              "Operator n/a"}
                           </div>
                           <div
                             style={{
@@ -909,7 +911,9 @@ function AdminDashboardContent() {
                 {loading ? (
                   <EmptyState>Loading payments…</EmptyState>
                 ) : payments.length === 0 ? (
-                  <EmptyState>No payments waiting for verification.</EmptyState>
+                  <EmptyState>
+                    No payments waiting for verification.
+                  </EmptyState>
                 ) : (
                   <div
                     style={{
@@ -936,7 +940,8 @@ function AdminDashboardContent() {
                               marginTop: 2,
                             }}
                           >
-                            {p.operator_company_name || "Operator n/a"}
+                            {p.operator_company_name ||
+                              "Operator n/a"}
                           </div>
                           <div
                             style={{
@@ -959,7 +964,10 @@ function AdminDashboardContent() {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {formatCurrency(p.amount, p.currency || "USD")}
+                          {formatCurrency(
+                            p.amount,
+                            p.currency || "USD"
+                          )}
                         </div>
                       </Row>
                     ))}
@@ -982,7 +990,9 @@ function AdminDashboardContent() {
                 {loading ? (
                   <EmptyState>Loading quotes…</EmptyState>
                 ) : quotes.length === 0 ? (
-                  <EmptyState>No new quotes in the last 24 hours.</EmptyState>
+                  <EmptyState>
+                    No new quotes in the last 24 hours.
+                  </EmptyState>
                 ) : (
                   <div
                     style={{
@@ -1125,7 +1135,8 @@ function MetricCard(props: {
   linkLabel: string;
   variant?: "primary" | "default";
 }) {
-  const { title, value, note, href, linkLabel, variant = "default" } = props;
+  const { title, value, note, href, linkLabel, variant = "default" } =
+    props;
   const isPrimary = variant === "primary";
 
   return (
