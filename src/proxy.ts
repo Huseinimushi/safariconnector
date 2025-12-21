@@ -10,12 +10,29 @@ export function proxy(req: NextRequest) {
   const isAdminHost = host.startsWith("admin.");
   const isOperatorHost = host.startsWith("operator.");
 
-  /* ========== ADMIN SUBDOMAIN (SAFE MODE) ==========
+  /* ========== ADMIN SUBDOMAIN ==============
      admin.safariconnector.com
-     → NO special rewrites, NO redirects.
-     → You MUST use real paths: /admin, /admin/login, etc.
-  ==================================================== */
+     - "/"       → /admin        (dashboard)
+     - "/login"  → /admin/login  (real admin login)
+     - any other path → handled normally (/, /operators, /bookings, etc.)
+  ============================================ */
   if (isAdminHost) {
+    // Root of admin subdomain => admin dashboard
+    if (pathname === "/") {
+      url.pathname = "/admin";
+      // REWRITE so hakuna redirect-loop; URL inabaki "/", content ni /admin
+      return NextResponse.rewrite(url);
+    }
+
+    // Convenience: if anything sends user to /login on admin subdomain,
+    // tumpeleke kwenye admin login halisi.
+    if (pathname === "/login") {
+      url.pathname = "/admin/login";
+      return NextResponse.rewrite(url);
+    }
+
+    // All other paths on admin subdomain: endelea normally
+    // (e.g. /operators, /bookings, /payments, /support, /analytics, /admin, etc.)
     return NextResponse.next();
   }
 
@@ -23,7 +40,7 @@ export function proxy(req: NextRequest) {
      operator.safariconnector.com
      - "/"       → /operators
      - "/login"  → /operators/login
-     - any other → /operators/<path>
+     - any other → /operators<path>  (unless already starts with /operators)
   ==================================================== */
   if (isOperatorHost) {
     if (pathname === "/") {
@@ -47,7 +64,8 @@ export function proxy(req: NextRequest) {
 
   /* ================= ROOT DOMAIN =====================
      safariconnector.com / www.safariconnector.com
-     (optional) block direct /admin, /operators on main site
+     - Block direct access to /admin and /operators
+       on the main public site by redirecting to "/".
   ===================================================== */
   if (pathname.startsWith("/admin") || pathname.startsWith("/operators")) {
     url.pathname = "/";
