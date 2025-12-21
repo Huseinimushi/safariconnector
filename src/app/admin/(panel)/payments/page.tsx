@@ -1,3 +1,4 @@
+// src/app/payments/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -20,47 +21,21 @@ type BookingRow = {
 
 type Tab = "needs" | "verified";
 
-async function safeReadResponse(res: Response): Promise<{
-  ok: boolean;
-  status: number;
-  statusText: string;
-  contentType: string | null;
-  json: any | null;
-  text: string | null;
-}> {
-  const contentType = res.headers.get("content-type");
-  const status = res.status;
-  const statusText = res.statusText;
-
-  if (contentType && contentType.toLowerCase().includes("application/json")) {
-    const json = await res.json().catch(() => null);
-    return { ok: res.ok, status, statusText, contentType, json, text: null };
-  }
-
-  const text = await res.text().catch(() => null);
-  let json: any | null = null;
-  if (text) {
-    try {
-      json = JSON.parse(text);
-    } catch {
-      json = null;
-    }
-  }
-
-  return { ok: res.ok, status, statusText, contentType, json, text };
-}
-
 export default function AdminPaymentsPage() {
   const [tab, setTab] = useState<Tab>("needs");
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<BookingRow[]>([]);
   const [error, setError] = useState<string | null>(null);
-
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
-  const getAccessToken = async (): Promise<string | null> => {
-    const session = await supabase.auth.getSession();
-    return session.data.session?.access_token || null;
+  const formatDateTime = (value: string | null) => {
+    if (!value) return "-";
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
   };
 
   const load = async () => {
@@ -68,40 +43,45 @@ export default function AdminPaymentsPage() {
     setError(null);
 
     try {
-      const token = await getAccessToken();
-      if (!token) {
+      // Basic guard: ensure there is a session at all
+      const sessionRes = await supabase.auth.getSession();
+      if (!sessionRes.data.session) {
+        setRows([]);
         setError("Not authenticated. Please log in as admin.");
-        setRows([]);
+        setLoading(false);
         return;
       }
 
-      const res = await fetch(`/api/admin/payments/list?view=${tab}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      // Read bookings directly from Supabase.
+      // "Needs" = payment_submitted, "Verified" = payment_verified.
+      let query = supabase
+        .from("bookings")
+        .select(
+          "id, status, payment_status, created_at, total_amount, currency, traveller_id, operator_id, quote_id"
+        )
+        .order("created_at", { ascending: false })
+        .limit(50);
 
-      const parsed = await safeReadResponse(res);
-      const json = parsed.json;
+      if (tab === "needs") {
+        query = query.eq("status", "payment_submitted");
+      } else {
+        query = query.eq("status", "payment_verified");
+      }
 
-      if (!parsed.ok || !json?.ok) {
-        console.error("admin payments list error:", {
-          status: parsed.status,
-          statusText: parsed.statusText,
-          json,
-          text: parsed.text,
-        });
+      const { data, error: qErr } = await query;
+
+      if (qErr) {
+        console.error("admin payments list error (direct):", qErr);
         setRows([]);
-        setError(json?.error || `Failed to load payments (${parsed.status}).`);
+        setError(qErr.message || "Failed to load payments.");
         return;
       }
 
-      setRows((json.items || []) as BookingRow[]);
-    } catch (e) {
-      console.error("admin payments list exception:", e);
+      setRows((data || []) as BookingRow[]);
+    } catch (e: any) {
+      console.error("admin payments list exception (direct):", e);
       setRows([]);
-      setError("Unexpected error loading payments.");
+      setError(e?.message || "Unexpected error loading payments.");
     } finally {
       setLoading(false);
     }
@@ -113,16 +93,12 @@ export default function AdminPaymentsPage() {
   }, [tab]);
 
   const needsCount = useMemo(
-    () => rows.filter((r) => (r.status || "").toLowerCase() === "payment_submitted").length,
+    () =>
+      rows.filter(
+        (r) => (r.status || "").toLowerCase() === "payment_submitted"
+      ).length,
     [rows]
   );
-
-  const formatDateTime = (value: string | null) => {
-    if (!value) return "-";
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return value;
-    return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-  };
 
   const handleVerify = async (bookingId: string) => {
     if (!bookingId) return;
@@ -131,55 +107,102 @@ export default function AdminPaymentsPage() {
     setError(null);
 
     try {
-      const token = await getAccessToken();
-      if (!token) {
+      const sessionRes = await supabase.auth.getSession();
+      if (!sessionRes.data.session) {
         setError("Session expired. Please log in again.");
+        setVerifyingId(null);
         return;
       }
 
-      const res = await fetch("/api/admin/payments/verify", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ booking_id: bookingId }),
-      });
+      // Mark booking + related payments as verified directly in Supabase.
+      const { error: bErr } = await supabase
+        .from("bookings")
+        .update({
+          status: "payment_verified",
+          payment_status: "verified",
+        })
+        .eq("id", bookingId);
 
-      const parsed = await safeReadResponse(res);
-      const json = parsed.json;
-
-      if (!parsed.ok || !json?.ok) {
-        console.error("admin verify error:", {
-          status: parsed.status,
-          statusText: parsed.statusText,
-          json,
-          text: parsed.text,
-        });
-        setError(json?.error || `Failed to verify (${parsed.status}).`);
+      if (bErr) {
+        console.error("admin verify booking error:", bErr);
+        setError(bErr.message || "Failed to verify booking payment.");
+        setVerifyingId(null);
         return;
       }
 
-      // refresh list
+      // Optional: update payments table if such relation exists
+      const { error: pErr } = await supabase
+        .from("payments")
+        .update({ status: "verified" })
+        .eq("booking_id", bookingId);
+
+      if (pErr) {
+        console.error("admin verify payments error:", pErr);
+        // still show an error but booking itself is already verified
+        setError(
+          pErr.message || "Booking verified, but updating payment record failed."
+        );
+      }
+
+      // Refresh list
       await load();
-    } catch (e) {
+    } catch (e: any) {
       console.error("admin verify exception:", e);
-      setError("Unexpected error verifying payment.");
+      setError(e?.message || "Unexpected error verifying payment.");
     } finally {
       setVerifyingId(null);
     }
   };
 
   return (
-    <main style={{ maxWidth: 1120, margin: "0 auto", padding: "32px 16px 64px" }}>
-      <section style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+    <main
+      style={{
+        maxWidth: 1120,
+        margin: "0 auto",
+        padding: "32px 16px 64px",
+      }}
+    >
+      {/* HEADER */}
+      <section
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 12,
+          alignItems: "flex-start",
+        }}
+      >
         <div>
-          <div style={{ fontSize: 11, letterSpacing: "0.2em", textTransform: "uppercase", color: "#9CA3AF", marginBottom: 6 }}>
+          <div
+            style={{
+              fontSize: 11,
+              letterSpacing: "0.2em",
+              textTransform: "uppercase",
+              color: "#9CA3AF",
+              marginBottom: 6,
+            }}
+          >
             Safari Connector Admin
           </div>
-          <h1 style={{ margin: 0, fontSize: 34, fontWeight: 900, color: "#0F172A" }}>Payment verification</h1>
-          <p style={{ margin: 0, marginTop: 6, fontSize: 14, color: "#475569" }}>
-            Verify traveller proof submissions. Once verified, operator can confirm the booking.
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 34,
+              fontWeight: 900,
+              color: "#0F172A",
+            }}
+          >
+            Payment verification
+          </h1>
+          <p
+            style={{
+              margin: 0,
+              marginTop: 6,
+              fontSize: 14,
+              color: "#475569",
+            }}
+          >
+            Verify traveller proof submissions. Once verified, operator can
+            confirm the booking.
           </p>
 
           <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
@@ -189,13 +212,18 @@ export default function AdminPaymentsPage() {
               style={{
                 borderRadius: 999,
                 padding: "8px 14px",
-                border: tab === "needs" ? "2px solid #0F766E" : "1px solid #CBD5E1",
-                backgroundColor: tab === "needs" ? "#ECFEFF" : "#FFFFFF",
+                border:
+                  tab === "needs"
+                    ? "2px solid #0F766E"
+                    : "1px solid #CBD5E1",
+                backgroundColor:
+                  tab === "needs" ? "#ECFEFF" : "#FFFFFF",
                 fontWeight: 800,
                 cursor: "pointer",
               }}
             >
               Needs verification
+              {needsCount > 0 ? ` (${needsCount})` : ""}
             </button>
 
             <button
@@ -204,8 +232,12 @@ export default function AdminPaymentsPage() {
               style={{
                 borderRadius: 999,
                 padding: "8px 14px",
-                border: tab === "verified" ? "2px solid #0F766E" : "1px solid #CBD5E1",
-                backgroundColor: tab === "verified" ? "#ECFEFF" : "#FFFFFF",
+                border:
+                  tab === "verified"
+                    ? "2px solid #0F766E"
+                    : "1px solid #CBD5E1",
+                backgroundColor:
+                  tab === "verified" ? "#ECFEFF" : "#FFFFFF",
                 fontWeight: 800,
                 cursor: "pointer",
               }}
@@ -215,7 +247,13 @@ export default function AdminPaymentsPage() {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+          }}
+        >
           <Link
             href="/"
             style={{
@@ -251,33 +289,102 @@ export default function AdminPaymentsPage() {
         </div>
       </section>
 
+      {/* ERROR BANNER */}
       {error && (
-        <div style={{ marginTop: 14, borderRadius: 14, padding: 12, border: "1px solid #FCA5A5", background: "#FEF2F2", color: "#B91C1C" }}>
+        <div
+          style={{
+            marginTop: 14,
+            borderRadius: 14,
+            padding: 12,
+            border: "1px solid #FCA5A5",
+            background: "#FEF2F2",
+            color: "#B91C1C",
+          }}
+        >
           {error}
         </div>
       )}
 
-      <section style={{ marginTop: 18, borderRadius: 18, border: "1px solid #E2E8F0", background: "#FFFFFF", padding: 14 }}>
+      {/* LIST */}
+      <section
+        style={{
+          marginTop: 18,
+          borderRadius: 18,
+          border: "1px solid #E2E8F0",
+          background: "#FFFFFF",
+          padding: 14,
+        }}
+      >
         {loading ? (
           <div style={{ padding: 10, color: "#64748B" }}>Loading...</div>
         ) : rows.length === 0 ? (
-          <div style={{ padding: 10, color: "#64748B" }}>No items in this view.</div>
+          <div style={{ padding: 10, color: "#64748B" }}>
+            No items in this view.
+          </div>
         ) : (
           <div style={{ display: "grid", gap: 10 }}>
             {rows.map((r) => {
               const ref = r.id.slice(0, 8).toUpperCase();
-              const amount = `${r.currency || "USD"} ${r.total_amount ?? "-"}`;
-              const canVerify = (r.status || "").toLowerCase() === "payment_submitted";
+              const amount =
+                r.total_amount != null
+                  ? `${r.currency || "USD"} ${r.total_amount}`
+                  : `${r.currency || "USD"} -`;
+              const canVerify =
+                (r.status || "").toLowerCase() === "payment_submitted";
 
               return (
-                <div key={r.id} style={{ borderRadius: 16, border: "1px solid #E2E8F0", padding: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+                <div
+                  key={r.id}
+                  style={{
+                    borderRadius: 16,
+                    border: "1px solid #E2E8F0",
+                    padding: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      alignItems: "flex-start",
+                    }}
+                  >
                     <div>
-                      <div style={{ fontWeight: 900, color: "#0F172A" }}>Booking {ref}</div>
-                      <div style={{ marginTop: 4, fontSize: 12, color: "#475569" }}>Created: {formatDateTime(r.created_at)}</div>
-                      <div style={{ marginTop: 4, fontSize: 12, color: "#475569" }}>Amount: {amount}</div>
-                      <div style={{ marginTop: 4, fontSize: 12, color: "#475569" }}>
-                        Status: <strong>{r.status}</strong> | Payment: <strong>{r.payment_status}</strong>
+                      <div
+                        style={{
+                          fontWeight: 900,
+                          color: "#0F172A",
+                        }}
+                      >
+                        Booking {ref}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 12,
+                          color: "#475569",
+                        }}
+                      >
+                        Created: {formatDateTime(r.created_at)}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 12,
+                          color: "#475569",
+                        }}
+                      >
+                        Amount: {amount}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: 4,
+                          fontSize: 12,
+                          color: "#475569",
+                        }}
+                      >
+                        Status: <strong>{r.status}</strong> | Payment:{" "}
+                        <strong>{r.payment_status}</strong>
                       </div>
                     </div>
 
@@ -290,14 +397,18 @@ export default function AdminPaymentsPage() {
                           borderRadius: 999,
                           padding: "8px 14px",
                           border: "none",
-                          backgroundColor: !canVerify ? "#94A3B8" : "#14532D",
+                          backgroundColor: !canVerify
+                            ? "#94A3B8"
+                            : "#14532D",
                           color: "#FFFFFF",
                           fontWeight: 900,
                           cursor: !canVerify ? "not-allowed" : "pointer",
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {verifyingId === r.id ? "Verifying..." : "Mark verified"}
+                        {verifyingId === r.id
+                          ? "Verifying..."
+                          : "Mark verified"}
                       </button>
                     )}
                   </div>
