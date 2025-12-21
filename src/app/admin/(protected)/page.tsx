@@ -245,37 +245,37 @@ function AdminDashboardContent() {
   const NAV = useMemo(
     () => [
       {
-        href: "/admin",
+        href: "/",
         label: "Dashboard",
         desc: "Overview & latest activity",
       },
       {
-        href: "/admin/operators-overview",
+        href: "/operators-overview",
         label: "Operators overview",
         desc: "Status, trips, approvals",
       },
       {
-        href: "/admin/operators",
+        href: "/operators",
         label: "Operators list",
         desc: "Table view & actions",
       },
       {
-        href: "/admin/bookings",
+        href: "/bookings",
         label: "Bookings",
         desc: "Monitor booking flow",
       },
       {
-        href: "/admin/payments",
+        href: "/payments",
         label: "Payments",
         desc: "Verification & payouts",
       },
       {
-        href: "/admin/support",
+        href: "/support",
         label: "Support",
         desc: "Inbox & ticket triage",
       },
       {
-        href: "/admin/analytics",
+        href: "/analytics",
         label: "Analytics",
         desc: "KPIs & trends",
       },
@@ -351,11 +351,11 @@ function AdminDashboardContent() {
                 justifyContent: "flex-end",
               }}
             >
-              <QuickLink href="/admin/operators">Operators</QuickLink>
-              <QuickLink href="/admin/support">Support</QuickLink>
-              <QuickLink href="/admin/bookings">Bookings</QuickLink>
-              <QuickLink href="/admin/payments">Payments</QuickLink>
-              <QuickLink href="/admin/analytics">Analytics</QuickLink>
+              <QuickLink href="/operators">Operators</QuickLink>
+              <QuickLink href="/support">Support</QuickLink>
+              <QuickLink href="/bookings">Bookings</QuickLink>
+              <QuickLink href="/payments">Payments</QuickLink>
+              <QuickLink href="/analytics">Analytics</QuickLink>
             </div>
 
             <div style={{ marginLeft: 6 }}>
@@ -424,8 +424,8 @@ function AdminDashboardContent() {
             >
               {NAV.map((item) => {
                 const active =
-                  item.href === "/admin"
-                    ? pathname === "/admin"
+                  item.href === "/"
+                    ? pathname === "/"
                     : pathname?.startsWith(item.href);
 
                 return (
@@ -595,13 +595,13 @@ function AdminDashboardContent() {
                     flexWrap: "wrap",
                   }}
                 >
-                  <PrimaryAction href="/admin/operators-overview">
+                  <PrimaryAction href="/operators-overview">
                     Operators overview
                   </PrimaryAction>
-                  <SecondaryAction href="/admin/payments">
+                  <SecondaryAction href="/payments">
                     Payments
                   </SecondaryAction>
-                  <SecondaryAction href="/admin/bookings">
+                  <SecondaryAction href="/bookings">
                     Bookings
                   </SecondaryAction>
                 </div>
@@ -637,28 +637,28 @@ function AdminDashboardContent() {
                 title="Operators"
                 value={operatorsCount.toLocaleString("en-US")}
                 note="Registered companies"
-                href="/admin/operators"
+                href="/operators"
                 linkLabel="Open operators →"
               />
               <MetricCard
                 title="Trips in marketplace"
                 value={tripsCount.toLocaleString("en-US")}
                 note="Trips powering the public marketplace"
-                href="/admin/analytics"
+                href="/analytics"
                 linkLabel="View analytics →"
               />
               <MetricCard
                 title="Total bookings"
                 value={bookingsCount.toLocaleString("en-US")}
                 note="All bookings recorded in the system"
-                href="/admin/bookings"
+                href="/bookings"
                 linkLabel="Open bookings →"
               />
               <MetricCard
                 title="Payments pending"
                 value={pendingPaymentsCount.toLocaleString("en-US")}
                 note="Payments awaiting verification or processing"
-                href="/admin/payments"
+                href="/payments"
                 linkLabel="Review payments →"
                 variant="primary"
               />
@@ -677,7 +677,7 @@ function AdminDashboardContent() {
               <PanelCard
                 title="Latest operators"
                 subtitle="Recently created or updated suppliers."
-                href="/admin/operators-overview"
+                href="/operators-overview"
                 hrefLabel="View overview →"
               >
                 {loading ? (
@@ -814,7 +814,7 @@ function AdminDashboardContent() {
               <PanelCard
                 title="Recent bookings & payments"
                 subtitle="Latest traveller activity and payment queue."
-                href="/admin/bookings"
+                href="/bookings"
                 hrefLabel="Go to bookings →"
               >
                 {/* Bookings */}

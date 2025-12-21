@@ -50,7 +50,7 @@ export default function AdminLoginPage() {
       }
 
       // Successful login – go to /admin (no Next redirect(), only client nav)
-      router.replace("/admin");
+      router.replace("/");
       router.refresh();
     } catch (err: any) {
       console.error("admin login exception:", err);

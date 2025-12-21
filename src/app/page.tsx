@@ -46,7 +46,7 @@ export default async function HomePage() {
   const host = (h.get("host") || "").toLowerCase();
 
   if (host.startsWith("admin.")) {
-    redirect("/admin");
+    redirect("/");
   }
 
   if (host.startsWith("operator.")) {

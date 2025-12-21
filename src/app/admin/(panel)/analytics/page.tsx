@@ -256,7 +256,7 @@ export default function AdminAnalyticsPage() {
 
           <div style={{ textAlign: "right" }}>
             <Link
-              href="/admin"
+              href="/"
               style={{
                 fontSize: 13,
                 color: "#065f46",

@@ -51,7 +51,7 @@ export default function AdminOperatorsOverviewPage() {
         const { data, error } = await supabase.auth.getUser();
 
         if (error || !data?.user) {
-          router.replace("/admin/login");
+          router.replace("/login");
           return;
         }
 
@@ -74,7 +74,7 @@ export default function AdminOperatorsOverviewPage() {
         setAllowed(true);
       } catch (e) {
         console.error("admin check error (overview):", e);
-        router.replace("/admin/login");
+        router.replace("/login");
       } finally {
         setChecking(false);
       }

@@ -281,7 +281,7 @@ export default function AdminOperatorDetailPage() {
 
           <div style={{ textAlign: "right" }}>
             <Link
-              href="/admin/operators-overview"
+              href="/operators-overview"
               style={{
                 display: "inline-block",
                 fontSize: 13,

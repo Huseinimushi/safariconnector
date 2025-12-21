@@ -140,7 +140,7 @@ export default function AdminOperatorsPage() {
               </p>
             </div>
             <button
-              onClick={() => (window.location.href = "/admin")}
+              onClick={() => (window.location.href = "/")}
               style={{
                 alignSelf: "center",
                 padding: "6px 12px",

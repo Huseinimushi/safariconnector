@@ -217,7 +217,7 @@ export default function AdminPaymentsPage() {
 
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <Link
-            href="/admin"
+            href="/"
             style={{
               borderRadius: 999,
               padding: "9px 14px",

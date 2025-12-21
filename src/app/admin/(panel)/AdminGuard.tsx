@@ -25,8 +25,8 @@ export default function AdminGuard({
 
     const goLogin = () => {
       // avoid loop ikiwa tayari uko /admin/login
-      if (pathname?.startsWith("/admin/login")) return;
-      router.replace("/admin/login");
+      if (pathname?.startsWith("/login")) return;
+      router.replace("/login");
     };
 
     const check = async () => {
