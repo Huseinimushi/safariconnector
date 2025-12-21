@@ -61,13 +61,35 @@ export default async function RootLayout({
 
 /* ================== CUSTOM HEADERS ================== */
 
+const MAIN_COLOR = "#1B4D3E";
+
+function MainSiteButton() {
+  return (
+    <a
+      href="https://safariconnector.com"
+      style={{
+        padding: "6px 14px",
+        borderRadius: 999,
+        border: "1px solid rgba(255,255,255,0.55)",
+        color: "#F9FAFB",
+        textDecoration: "none",
+        fontSize: 12,
+        fontWeight: 600,
+        whiteSpace: "nowrap",
+      }}
+    >
+      Main website →
+    </a>
+  );
+}
+
 function AdminHeader() {
   return (
     <header
       style={{
         width: "100%",
-        borderBottom: "1px solid #E5E7EB",
-        backgroundColor: "#0B6B3A",
+        borderBottom: "1px solid rgba(15, 23, 42, 0.15)",
+        backgroundColor: MAIN_COLOR,
         color: "#F9FAFB",
       }}
     >
@@ -97,7 +119,7 @@ function AdminHeader() {
           <div
             style={{
               fontSize: 13,
-              opacity: 0.85,
+              opacity: 0.9,
             }}
           >
             Admin control center
@@ -106,15 +128,25 @@ function AdminHeader() {
 
         <div
           style={{
-            fontSize: 12,
-            opacity: 0.9,
-            textAlign: "right",
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
           }}
         >
-          <div>Restricted access</div>
-          <div style={{ fontSize: 11, opacity: 0.8 }}>
-            For internal marketplace operations only
+          <div
+            style={{
+              fontSize: 12,
+              opacity: 0.9,
+              textAlign: "right",
+            }}
+          >
+            <div>Restricted access</div>
+            <div style={{ fontSize: 11, opacity: 0.85 }}>
+              For internal marketplace operations only
+            </div>
           </div>
+
+          <MainSiteButton />
         </div>
       </div>
     </header>
@@ -126,8 +158,8 @@ function OperatorHeader() {
     <header
       style={{
         width: "100%",
-        borderBottom: "1px solid #E5E7EB",
-        backgroundColor: "#0F172A",
+        borderBottom: "1px solid rgba(15, 23, 42, 0.15)",
+        backgroundColor: MAIN_COLOR,
         color: "#E5F3EC",
       }}
     >
@@ -166,12 +198,22 @@ function OperatorHeader() {
 
         <div
           style={{
-            fontSize: 11,
-            textAlign: "right",
-            opacity: 0.85,
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
           }}
         >
-          <div>Manage trips, quotes & bookings</div>
+          <div
+            style={{
+              fontSize: 11,
+              textAlign: "right",
+              opacity: 0.9,
+            }}
+          >
+            <div>Manage trips, quotes & bookings</div>
+          </div>
+
+          <MainSiteButton />
         </div>
       </div>
     </header>
