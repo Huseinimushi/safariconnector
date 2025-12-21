@@ -1,3 +1,4 @@
+// src/app/operators/(panel)/layout.tsx
 "use client";
 
 import React, { useEffect, useState, type ReactNode } from "react";
@@ -5,24 +6,25 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-/* OFFICIAL SAFARI CONNECTOR BRAND COLORS */
 const BRAND = {
-  main: "#1B4D3E",   // main navy green
-  sand: "#F4F3ED",
-  white: "#FFFFFF",
-  border: "#E1E5ED",
-  textLight: "#F8FAF9",
-  textSubtle: "#9DA6A8",
+  bg: "#F4F3ED",
+  sidebar: "#1B4D3E",
+  panel: "#FFFFFF",
+  borderSoft: "#E1E5ED",
 };
 
-type Props = { children: ReactNode };
+type OperatorPanelProps = {
+  children: ReactNode;
+};
 
-export default function OperatorPanelLayout({ children }: Props) {
+export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const [companyName, setCompanyName] = useState<string | null>("Loading...");
+  const [companyName, setCompanyName] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
+  // Load operator company name (tunaionyesha kwenye sidebar chini kidogo)
   useEffect(() => {
     let alive = true;
 
@@ -30,7 +32,13 @@ export default function OperatorPanelLayout({ children }: Props) {
       const { data: userRes } = await supabase.auth.getUser();
       const uid = userRes.user?.id;
 
-      if (!uid) return setCompanyName("Your Company");
+      if (!uid) {
+        if (alive) {
+          setCompanyName(null);
+          setLoading(false);
+        }
+        return;
+      }
 
       const { data } = await supabase
         .from("operators_view")
@@ -38,13 +46,19 @@ export default function OperatorPanelLayout({ children }: Props) {
         .eq("user_id", uid)
         .maybeSingle();
 
-      if (alive) setCompanyName(data?.company_name ?? "Your Company");
+      if (alive) {
+        setCompanyName(data?.company_name ?? null);
+        setLoading(false);
+      }
     }
+
     load();
-    return () => { alive = false };
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  const logout = async () => {
+  const handleLogout = async () => {
     await supabase.auth.signOut();
     router.replace("/login");
   };
@@ -59,125 +73,145 @@ export default function OperatorPanelLayout({ children }: Props) {
     { href: "/profile", label: "Profile", icon: "👤" },
   ];
 
-  const active = (href: string) => pathname?.startsWith(href);
+  const isActive = (href: string) => pathname?.startsWith(href);
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", background: BRAND.sand }}>
-      {/* SIDEBAR */}
+    <div style={{ minHeight: "100vh", display: "flex", background: BRAND.bg }}>
+      {/* SIDEBAR ONLY */}
       <aside
         style={{
-          width: 100,
-          background: BRAND.main,
-          color: BRAND.textLight,
+          width: 92,
+          background: BRAND.sidebar,
+          color: "#FFF",
           display: "flex",
           flexDirection: "column",
+          padding: "14px 6px",
           alignItems: "center",
-          paddingTop: 18,
-          gap: 18,
+          gap: 14,
         }}
       >
-        {NAV.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            title={item.label}
-            style={{
-              textDecoration: "none",
-              color: active(item.href) ? BRAND.white : BRAND.textLight,
-              textAlign: "center",
-              fontWeight: active(item.href) ? 700 : 500,
-            }}
-          >
-            <div style={{ fontSize: 26 }}>{item.icon}</div>
-            <div style={{ fontSize: 11, marginTop: 2 }}>{item.label}</div>
-          </Link>
-        ))}
+        {NAV.map((item) => {
+          const active = isActive(item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              title={item.label}
+              style={{
+                textDecoration: "none",
+                width: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 4,
+                padding: "4px 0",
+              }}
+            >
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 999,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 22,
+                  border: active
+                    ? "2px solid #F9FAFB"
+                    : "1px solid rgba(255,255,255,0.35)",
+                }}
+              >
+                {item.icon}
+              </div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: active ? "#FFF" : "#D1D5DB",
+                  fontWeight: active ? 700 : 500,
+                }}
+              >
+                {item.label}
+              </div>
+            </Link>
+          );
+        })}
 
-        <button
-          onClick={logout}
-          title="Logout"
+        {/* Company name badge (optional, si header ya pili) */}
+        <div
           style={{
             marginTop: "auto",
-            background: "transparent",
-            border: "1px solid rgba(255,255,255,0.35)",
+            marginBottom: 10,
+            padding: "8px 6px 4px",
+            textAlign: "center",
+            borderTop: "1px solid rgba(255,255,255,0.25)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 9,
+              textTransform: "uppercase",
+              letterSpacing: "0.16em",
+              color: "rgba(226,232,240,0.9)",
+              marginBottom: 4,
+            }}
+          >
+            Your company
+          </div>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              color: "#F9FAFB",
+              lineHeight: 1.2,
+              wordBreak: "break-word",
+            }}
+          >
+            {loading ? "Loading…" : companyName ?? "—"}
+          </div>
+        </div>
+
+        <button
+          onClick={handleLogout}
+          title="Logout"
+          style={{
+            width: 40,
+            height: 40,
             borderRadius: 999,
-            width: 42,
-            height: 42,
-            color: "#FFD4D4",
-            fontSize: 20,
+            border: "1px solid rgba(255,255,255,0.3)",
+            color: "#FCA5A5",
+            background: "transparent",
+            fontSize: 18,
             cursor: "pointer",
-            marginBottom: 14,
           }}
         >
           ⏏
         </button>
       </aside>
 
-      {/* RIGHT CONTENT PANEL */}
+      {/* NO TOP HEADER HERE — just content + footer */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-        
-        {/* TOP HEADER */}
-        <header
+        <main
           style={{
-            background: BRAND.main,
-            height: 76,
-            borderBottom: `1px solid rgba(255,255,255,0.18)`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "0 26px",
+            flex: 1,
+            padding: "26px 28px 32px",
           }}
         >
-          <div
-            style={{
-              color: BRAND.white,
-              fontSize: 24,
-              fontWeight: 800,
-              letterSpacing: 0.2,
-            }}
-          >
-            {companyName}
-          </div>
+          {children}
+        </main>
 
-          <a
-            href="https://safariconnector.com"
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              color: BRAND.white,
-              border: "1px solid rgba(255,255,255,0.3)",
-              padding: "7px 16px",
-              borderRadius: 999,
-              textDecoration: "none",
-              fontSize: 13,
-            }}
-          >
-            Main website →
-          </a>
-        </header>
-
-        {/* PAGE CONTENT */}
-        <main style={{ flex: 1, padding: "28px" }}>{children}</main>
-
-        {/* FOOTER */}
         <footer
           style={{
-            background: BRAND.white,
-            borderTop: `1px solid ${BRAND.border}`,
-            padding: "12px 26px",
+            borderTop: `1px solid ${BRAND.borderSoft}`,
+            background: BRAND.panel,
+            padding: "10px 24px",
             fontSize: 11,
-            color: BRAND.textSubtle,
+            color: "#6B7280",
             display: "flex",
             justifyContent: "space-between",
           }}
         >
-          <span>Safari Connector · Operator Workspace</span>
-          <Link
-            href="/support"
-            style={{ color: BRAND.main, fontWeight: 600 }}
-          >
-            Contact support
-          </Link>
+          <span>Operator workspace</span>
+          <span>Safari Connector</span>
         </footer>
       </div>
     </div>
