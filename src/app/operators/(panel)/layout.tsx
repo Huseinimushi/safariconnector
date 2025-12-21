@@ -7,14 +7,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 const BRAND = {
-  bg: "#F4F3ED",
-  shell: "#10352A",
-  sidebar: "#1B4D3E",
+  bg: "#F4F3ED",          // sand background
+  shell: "#07111F",       // navy green (top bar + sidebar)
+  sidebar: "#07111F",
   panel: "#FFFFFF",
   borderSoft: "#E1E5ED",
   borderSubtle: "#CBD5E1",
-  primaryDark: "#064E3B",
-  subtle: "#9CA3AF",
+  primaryDark: "#F9FAFB", // main text on navy
+  subtle: "#E5E7EB",
   muted: "#6B7280",
 };
 
@@ -37,8 +37,10 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
       const uid = userRes.user?.id;
 
       if (!uid) {
-        setCompanyName(null);
-        setLoading(false);
+        if (alive) {
+          setCompanyName(null);
+          setLoading(false);
+        }
         return;
       }
 
@@ -53,6 +55,7 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
         setLoading(false);
       }
     }
+
     load();
     return () => {
       alive = false;
@@ -77,7 +80,13 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
   const isActive = (href: string) => pathname?.startsWith(href);
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", background: BRAND.bg }}>
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        background: BRAND.bg,
+      }}
+    >
       {/* SIDEBAR */}
       <aside
         style={{
@@ -120,6 +129,7 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
                   border: active
                     ? "2px solid #F9FAFB"
                     : "1px solid rgba(255,255,255,0.35)",
+                  backgroundColor: active ? "rgba(15,118,110,0.22)" : "transparent",
                 }}
               >
                 {item.icon}
@@ -127,7 +137,7 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
               <div
                 style={{
                   fontSize: 10,
-                  color: active ? "#FFF" : "#D1D5DB",
+                  color: active ? "#FFFFFF" : "#D1D5DB",
                   fontWeight: active ? 700 : 500,
                 }}
               >
@@ -145,7 +155,7 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
             width: 40,
             height: 40,
             borderRadius: 999,
-            border: "1px solid rgba(255,255,255,0.3)",
+            border: "1px solid rgba(248,250,252,0.35)",
             color: "#FCA5A5",
             background: "transparent",
             fontSize: 18,
@@ -158,11 +168,11 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
 
       {/* SHELL */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-        {/* TOP HEADER — simplified */}
+        {/* TOP HEADER */}
         <header
           style={{
-            background: BRAND.panel,
-            borderBottom: `1px solid ${BRAND.borderSoft}`,
+            background: BRAND.shell,
+            borderBottom: `1px solid #020617`,
             height: 72,
             display: "flex",
             alignItems: "center",
@@ -175,19 +185,41 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
               fontSize: 24,
               fontWeight: 800,
               color: BRAND.primaryDark,
+              letterSpacing: 0.02,
             }}
           >
-            {loading ? "Loading..." : companyName ?? "Your Company"}
+            {loading ? "Loading company…" : companyName ?? "Your company"}
           </div>
 
           <div
             style={{
+              display: "flex",
+              gap: 16,
+              alignItems: "center",
               fontSize: 13,
-              color: BRAND.subtle,
-              fontWeight: 500,
             }}
           >
-            Manage trips, quotes & bookings
+            <span style={{ color: BRAND.subtle }}>
+              Manage trips, quotes & bookings
+            </span>
+
+            {/* Button kwenda main system */}
+            <a
+              href="https://safariconnector.com"
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                padding: "7px 14px",
+                borderRadius: 999,
+                border: "1px solid rgba(248,250,252,0.35)",
+                color: BRAND.primaryDark,
+                textDecoration: "none",
+                fontWeight: 700,
+                background: "rgba(15,23,42,0.35)",
+              }}
+            >
+              Main website →
+            </a>
           </div>
         </header>
 
@@ -208,19 +240,19 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
             background: BRAND.panel,
             padding: "10px 24px",
             fontSize: 11,
-            color: BRAND.subtle,
+            color: BRAND.muted,
             display: "flex",
             justifyContent: "space-between",
           }}
         >
-          <span>Operator workspace</span>
+          <span>Safari Connector · Operator workspace</span>
           <span>
             Need help?{" "}
             <Link
               href="/support"
-              style={{ color: BRAND.primaryDark, fontWeight: 600 }}
+              style={{ color: "#065F46", fontWeight: 600 }}
             >
-              Contact
+              Contact support
             </Link>
           </span>
         </footer>
