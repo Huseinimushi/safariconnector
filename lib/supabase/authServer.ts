@@ -1,4 +1,4 @@
-// lib/supabase/authServer.ts
+// src/lib/supabase/authServer.ts
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
@@ -11,8 +11,11 @@ export type RequireUserResult = {
   supabase: ReturnType<typeof createServerClient>;
 };
 
+/**
+ * Server-side helper to get Supabase client + current user
+ * Works correctly with Next.js 16 async cookies()
+ */
 export async function requireUser(): Promise<RequireUserResult> {
-  // ✅ Next.js 16 cookies() is async
   const cookieStore = await cookies();
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

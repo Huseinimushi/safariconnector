@@ -1,4 +1,3 @@
-// src/app/trips/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
@@ -29,9 +28,9 @@ type TripRow = {
 
 const pickOperatorId = (op: OperatorRow | null): string | null => {
   if (!op) return null;
-  if (typeof op.operator_id === "string") return op.operator_id;
-  if (typeof op.id === "string") return op.id;
-  if (typeof op.user_id === "string") return op.user_id;
+  if (typeof op.operator_id === "string" && op.operator_id) return op.operator_id;
+  if (typeof op.id === "string" && op.id) return op.id;
+  if (typeof op.user_id === "string" && op.user_id) return op.user_id;
   return null;
 };
 
@@ -171,7 +170,7 @@ export default function OperatorTripsPage() {
 
   const tripsCount = trips.length;
 
-  // -------- NEW: Approval logic --------
+  // -------- Approval logic --------
   const rawStatus = (operator?.status as string) || "pending";
   const canPostTrips =
     rawStatus === "approved" || rawStatus === "live";
@@ -487,7 +486,7 @@ export default function OperatorTripsPage() {
                       }}
                     >
                       <Link
-                        href={`/trips/${trip.id}`} // public trip page
+                        href={`/trips/${trip.id}`}
                         style={{
                           color: "#0B6B3A",
                           textDecoration: "none",
@@ -505,7 +504,7 @@ export default function OperatorTripsPage() {
                         |
                       </span>
                       <Link
-                        href={`/trips/${trip.id}`} // edit route yako
+                        href={`/trips/${trip.id}`}
                         style={{
                           color: "#2563EB",
                           textDecoration: "none",

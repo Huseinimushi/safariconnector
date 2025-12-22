@@ -1,4 +1,3 @@
-// src/app/operators/(panel)/layout.tsx
 "use client";
 
 import React, { useEffect, useState, type ReactNode } from "react";
@@ -136,7 +135,7 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
           );
         })}
 
-        {/* Company name badge (optional, si header ya pili) */}
+        {/* Company name badge */}
         <div
           style={{
             marginTop: "auto",
@@ -188,7 +187,7 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
         </button>
       </aside>
 
-      {/* NO TOP HEADER HERE — just content + footer */}
+      {/* CONTENT */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
         <main
           style={{
