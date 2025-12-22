@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { supabaseBrowser } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 
 type OperatorRow = {
   id: string;
@@ -57,7 +57,6 @@ const fromCsv = (parks: string[] | null) => (parks ?? []).join(", ");
 export default function EditTripPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
-  const supabase = supabaseBrowser;
   const tripId = (params?.id as string) || "";
 
   const [operator, setOperator] = useState<OperatorRow | null>(null);
@@ -77,17 +76,22 @@ export default function EditTripPage() {
       setLoading(true);
       setMsg(null);
 
-      // current user
+      // 1) Current user
       const {
         data: { user },
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError || !user) {
+      if (userError) {
+        console.error("auth error:", userError);
+      }
+
+      if (!user) {
         router.push("/login");
         return;
       }
 
+      // 2) Operator profile
       const { data: op, error: opError } = await supabase
         .from("operators")
         .select("id, company_name")
@@ -95,6 +99,7 @@ export default function EditTripPage() {
         .maybeSingle();
 
       if (opError || !op) {
+        console.error("operator load error:", opError);
         if (!isMounted) return;
         setMsg("❌ You must have an operator profile to edit trips.");
         setLoading(false);
@@ -104,7 +109,7 @@ export default function EditTripPage() {
       if (!isMounted) return;
       setOperator(op as OperatorRow);
 
-      // Trip must belong to this operator
+      // 3) Trip must belong to this operator
       const { data: trip, error: tripError } = await supabase
         .from("trips")
         .select(
@@ -115,6 +120,7 @@ export default function EditTripPage() {
         .maybeSingle();
 
       if (tripError || !trip) {
+        console.error("trip load error:", tripError);
         if (!isMounted) return;
         setMsg("❌ Trip not found or not owned by your operator.");
         setLoading(false);
@@ -152,7 +158,7 @@ export default function EditTripPage() {
       if (!isMounted) return;
       setForm(initialForm);
 
-      // Load trip_days
+      // 4) Load trip_days
       const { data: dayRows, error: dayErr } = await supabase
         .from("trip_days")
         .select("id,day_index,title,desc")
@@ -178,7 +184,7 @@ export default function EditTripPage() {
     return () => {
       isMounted = false;
     };
-  }, [router, supabase, tripId]);
+  }, [router, tripId]);
 
   /* ───────── Helpers ───────── */
   const onChange = (field: keyof TripForm, value: string) => {
@@ -246,7 +252,6 @@ export default function EditTripPage() {
           excludes: excludesArr.length ? excludesArr : null,
           images: imagesArray.length ? imagesArray : null,
           hero_url: form.heroUrl.trim() || null,
-          // do NOT touch `status` here
         })
         .eq("id", tripId)
         .eq("operator_id", operator.id);
@@ -296,7 +301,7 @@ export default function EditTripPage() {
       setSaving(false);
       router.push("/trips");
     } catch (err) {
-      console.error(err);
+      console.error("trip update exception:", err);
       setMsg("❌ Unexpected error while saving changes.");
       setSaving(false);
     }
@@ -330,6 +335,9 @@ export default function EditTripPage() {
       }
 
       router.push("/trips");
+    } catch (err) {
+      console.error("trip delete exception:", err);
+      setMsg("❌ Unexpected error while deleting trip.");
     } finally {
       setSaving(false);
     }
@@ -599,7 +607,9 @@ export default function EditTripPage() {
                   <label style={labelStyle}>Trip highlights</label>
                   <textarea
                     value={form.highlightsText}
-                    onChange={(e) => onChange("highlightsText", e.target.value)}
+                    onChange={(e) =>
+                      onChange("highlightsText", e.target.value)
+                    }
                     rows={5}
                     style={textareaStyle}
                   />
@@ -608,7 +618,9 @@ export default function EditTripPage() {
                   <label style={labelStyle}>Included</label>
                   <textarea
                     value={form.includesText}
-                    onChange={(e) => onChange("includesText", e.target.value)}
+                    onChange={(e) =>
+                      onChange("includesText", e.target.value)
+                    }
                     rows={5}
                     style={textareaStyle}
                   />
@@ -617,7 +629,9 @@ export default function EditTripPage() {
                   <label style={labelStyle}>Excluded</label>
                   <textarea
                     value={form.excludesText}
-                    onChange={(e) => onChange("excludesText", e.target.value)}
+                    onChange={(e) =>
+                      onChange("excludesText", e.target.value)
+                    }
                     rows={5}
                     style={textareaStyle}
                   />
@@ -665,13 +679,17 @@ export default function EditTripPage() {
                     <input
                       style={{ ...inputStyle, marginBottom: 4 }}
                       value={d.title}
-                      onChange={(e) => updateDay(idx, "title", e.target.value)}
+                      onChange={(e) =>
+                        updateDay(idx, "title", e.target.value)
+                      }
                     />
                     <textarea
                       rows={3}
                       style={textareaStyle}
                       value={d.desc}
-                      onChange={(e) => updateDay(idx, "desc", e.target.value)}
+                      onChange={(e) =>
+                        updateDay(idx, "desc", e.target.value)
+                      }
                     />
                   </div>
                 ))}

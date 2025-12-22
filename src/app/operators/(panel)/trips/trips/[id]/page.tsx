@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabaseBrowser } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 
 type OperatorRow = {
   id: string;
@@ -60,7 +60,6 @@ export default function EditTripPage({
   params: Promise<{ id: string }>;
 }) {
   const router = useRouter();
-  const supabase = supabaseBrowser; // tayari ni client
 
   const [tripId, setTripId] = useState<string | null>(null);
   const [operator, setOperator] = useState<OperatorRow | null>(null);
@@ -93,6 +92,7 @@ export default function EditTripPage({
       } = await supabase.auth.getUser();
 
       if (userError || !user) {
+        console.error("auth error:", userError);
         router.push("/login");
         return;
       }
@@ -104,6 +104,7 @@ export default function EditTripPage({
         .maybeSingle();
 
       if (opError || !op) {
+        console.error("operator load error:", opError);
         setMsg("❌ You must have an operator profile to edit trips.");
         setLoading(false);
         return;
@@ -122,6 +123,7 @@ export default function EditTripPage({
         .maybeSingle();
 
       if (tripError || !trip) {
+        console.error("trip load error:", tripError);
         setMsg("❌ Trip not found or not owned by your operator.");
         setLoading(false);
         return;
@@ -178,7 +180,7 @@ export default function EditTripPage({
 
       setLoading(false);
     })();
-  }, [router, supabase, tripId]);
+  }, [router, tripId]);
 
   /* ───────── Helpers ───────── */
   const onChange = (field: keyof TripForm, value: string) => {
@@ -246,7 +248,6 @@ export default function EditTripPage({
           excludes: excludesArr.length ? excludesArr : null,
           images: imagesArray.length ? imagesArray : null,
           hero_url: form.heroUrl.trim() || null,
-          // do NOT touch `status` here
         })
         .eq("id", tripId)
         .eq("operator_id", operator.id);
@@ -254,7 +255,7 @@ export default function EditTripPage({
       if (updateError) {
         console.error("trip update error:", updateError);
         setMsg(
-          "❌ Failed to update trip. Please make sure style/status match DB enums."
+          "❌ Failed to update trip. Please make sure fields match DB enums."
         );
         setSaving(false);
         return;
@@ -299,7 +300,7 @@ export default function EditTripPage({
       setSaving(false);
       router.push("/trips");
     } catch (err) {
-      console.error(err);
+      console.error("trip update exception:", err);
       setMsg("❌ Unexpected error while saving changes.");
       setSaving(false);
     }
@@ -318,7 +319,14 @@ export default function EditTripPage({
 
     try {
       // Delete days first
-      await supabase.from("trip_days").delete().eq("trip_id", tripId);
+      const { error: delDaysErr } = await supabase
+        .from("trip_days")
+        .delete()
+        .eq("trip_id", tripId);
+
+      if (delDaysErr) {
+        console.error("trip_days delete error:", delDaysErr);
+      }
 
       const { error } = await supabase
         .from("trips")
@@ -334,6 +342,9 @@ export default function EditTripPage({
       }
 
       router.push("/trips");
+    } catch (err) {
+      console.error("trip delete exception:", err);
+      setMsg("❌ Unexpected error while deleting trip.");
     } finally {
       setSaving(false);
     }
@@ -794,7 +805,7 @@ const h2Style: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
   width: "100%",
   borderRadius: 10,
-  border: "1px solid #D1D5DB", // ✅ fixed
+  border: "1px solid #D1D5DB",
   padding: "6px 9px",
   fontSize: 13,
   outline: "none",

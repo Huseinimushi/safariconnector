@@ -1,4 +1,4 @@
-// src/app/trips/new/page.tsx
+// src/app/operators/(panel)/trips/new/page.tsx
 "use client";
 
 import React, { useEffect, useState, Suspense } from "react";
@@ -83,7 +83,9 @@ const emptyForm: TripForm = {
   excludesText: "",
 };
 
-/** Wrapper ili kukidhi Next: useSearchParams lazima iwe ndani ya Suspense */
+/**
+ * Wrapper: useSearchParams inahitaji Suspense kwenye App Router
+ */
 export default function NewTripPage() {
   return (
     <Suspense
@@ -108,7 +110,9 @@ export default function NewTripPage() {
   );
 }
 
-/** Hii ndiyo component yetu ya zamani yote, sasa iko ndani ya Suspense */
+/**
+ * Component kuu ya form
+ */
 function NewTripPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -139,6 +143,7 @@ function NewTripPageInner() {
           ? window.localStorage.getItem("sc_ai_plan")
           : null;
       if (!raw) return;
+
       const parsed = JSON.parse(raw) as AIStored;
       if (!parsed || !parsed.plan || !Array.isArray(parsed.plan.days)) return;
 
@@ -148,16 +153,18 @@ function NewTripPageInner() {
         parsed.plan.days.length ||
         parsed.form?.duration ||
         emptyForm.duration;
+
       const baseTitle =
         parsed.form?.circuit ||
         parsed.form?.destination ||
         "Custom Safari";
+
       const title = `${duration}-Day ${baseTitle}`;
 
       setAiPreviewTitle(title);
       setAiPreviewDuration(duration);
     } catch {
-      // ignore
+      // ignore parsing errors
     }
   }, []);
 
@@ -172,12 +179,16 @@ function NewTripPageInner() {
         error: userError,
       } = await supabase.auth.getUser();
 
-      if (userError || !user) {
+      if (userError) {
+        console.error("auth error:", userError);
+      }
+
+      if (!user) {
         router.push("/login");
         return;
       }
 
-      // Check if operatorId in URL (from dashboard button)
+      // Optional operatorId from URL (kama umetoka dashboard)
       const operatorIdFromUrl = searchParams.get("operatorId");
 
       let op: OperatorRow | null = null;
@@ -202,6 +213,7 @@ function NewTripPageInner() {
           .single();
 
         if (error || !data) {
+          console.error("operator load error:", error);
           setMsg(
             "❌ We could not find an operator profile linked to your account."
           );
@@ -234,6 +246,7 @@ function NewTripPageInner() {
       const n = form.duration || 0;
       if (n <= 0) return [];
       let next = [...prev];
+
       if (next.length < n) {
         while (next.length < n) {
           const idx = next.length + 1;
@@ -242,6 +255,7 @@ function NewTripPageInner() {
       } else if (next.length > n) {
         next = next.slice(0, n);
       }
+
       return next;
     });
   }, [form.duration]);
@@ -337,7 +351,9 @@ function NewTripPageInner() {
       title:
         aiPreviewTitle ||
         f.title ||
-        `${duration}-Day ${srcForm.circuit || srcForm.destination || "Safari"}`,
+        `${duration}-Day ${
+          srcForm.circuit || srcForm.destination || "Safari"
+        }`,
       duration,
       style: styleFromAi,
       parksText: parksFromInterests,
@@ -346,7 +362,6 @@ function NewTripPageInner() {
         (plan.highlights || []).join("\n") || f.highlightsText || "",
     }));
 
-    // Set days from AI plan
     if (Array.isArray(plan.days) && plan.days.length > 0) {
       const mapped: DayForm[] = plan.days.map((d, i) => ({
         title: d.title || `Day ${d.day || i + 1}`,
@@ -380,7 +395,7 @@ function NewTripPageInner() {
     ].filter((u) => u && u.trim().length > 0);
 
     try {
-      // Insert into trips (no status passed → use DB default, avoid trips_status_check)
+      // Insert into trips (status iachwe default ya DB ili kuepuka trips_status_check)
       const { data, error } = await supabase
         .from("trips")
         .insert([
@@ -432,7 +447,7 @@ function NewTripPageInner() {
         }
       }
 
-      // Insert rates
+      // Insert seasonal rates
       const ratePayload = rates
         .map((r) => ({
           trip_id: tripId,
@@ -638,7 +653,6 @@ function NewTripPageInner() {
               {isPending ? "pending approval" : "approved operator"}
             </span>
 
-            {/* AI / Manual mode UX on the right */}
             {mode === "ai" ? (
               aiData ? (
                 <button
