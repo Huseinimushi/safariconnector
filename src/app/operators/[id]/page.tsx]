@@ -1,0 +1,55 @@
+// src/app/operators/[id]/page.tsx
+"use client";
+
+import React from "react";
+import { useParams } from "next/navigation";
+
+// Import the actual operator panel pages
+import DashboardPage from "../(panel)/dashboard/page";
+import TripsPage from "../(panel)/trips/page";
+import BookingsPage from "../(panel)/bookings/page";
+import EnquiriesPage from "../(panel)/enquiries/page";
+import QuotesPage from "../(panel)/quotes/page";
+import InboxPage from "../(panel)/inbox/page";
+import ProfilePage from "../(panel)/profile/page";
+
+// In future you can add more slugs here if needed
+const ROUTE_MAP: Record<string, React.ComponentType> = {
+  dashboard: DashboardPage,
+  trips: TripsPage,
+  bookings: BookingsPage,
+  enquiries: EnquiriesPage,
+  quotes: QuotesPage,
+  inbox: InboxPage,
+  profile: ProfilePage,
+};
+
+export default function OperatorDynamicPage() {
+  const params = useParams<{ id: string }>();
+  const slug = (params?.id || "").toLowerCase();
+
+  const Section = ROUTE_MAP[slug];
+
+  if (Section) {
+    // Known operator panel section → render that page
+    return <Section />;
+  }
+
+  // Unknown slug – keep a simple, safe fallback
+  return (
+    <main
+      style={{
+        minHeight: "80vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 14,
+        color: "#B91C1C",
+        padding: 16,
+        textAlign: "center",
+      }}
+    >
+      Invalid operator link.
+    </main>
+  );
+}
