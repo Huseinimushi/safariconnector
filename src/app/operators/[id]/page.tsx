@@ -1,13 +1,14 @@
+// src/app/operators/[id]/page.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import React, { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
 /* ───────────────── Helpers ───────────────── */
 
-// ✅ NEW: strict UUID validator so we never send "quotes" into a uuid column
+// ✅ strict UUID validator (keeps your original)
 const isUUID = (value: string | undefined | null): value is string => {
   if (!value) return false;
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
@@ -15,10 +16,25 @@ const isUUID = (value: string | undefined | null): value is string => {
   );
 };
 
+// ✅ NEW: operator workspace sections (so /operators/trips does NOT show "Invalid operator link")
+const OPERATOR_SECTIONS = new Set([
+  "dashboard",
+  "trips",
+  "bookings",
+  "enquiries",
+  "quotes",
+  "inbox",
+  "profile",
+  "new",
+  "leads",
+  "payments",
+  "settings",
+]);
+
 /* ───────────────── Types ───────────────── */
 
 type OperatorRow = {
-  [key: string]: any; // tunaruhusu fields zote (kutoka operators_view)
+  [key: string]: any; // from operators_view
 };
 
 type TripRow = {
@@ -308,7 +324,7 @@ function QuoteRequestForm({ operatorId, operatorName }: QuoteFormProps) {
   );
 }
 
-/* ───────────────── Review Form (customer writes review) ───────────────── */
+/* ───────────────── Review Form ───────────────── */
 
 type ReviewFormProps = {
   operatorId: string;
@@ -551,9 +567,20 @@ function ReviewForm({ operatorId, onCreated }: ReviewFormProps) {
 /* ───────────────── Main Page ───────────────── */
 
 export default function PublicOperatorPage() {
+  const router = useRouter();
   const params = useParams<{ id: string }>();
-  const operatorIdFromUrl = params?.id as string | undefined;
+  const rawParam = (params?.id as string | undefined) ?? "";
+  const slug = rawParam.trim().toLowerCase();
 
+  // ✅ NEW: if slug is a section (trips/quotes/etc) redirect to operator panel route
+  useEffect(() => {
+    if (!slug) return;
+    if (OPERATOR_SECTIONS.has(slug)) {
+      router.replace(`/${slug}`);
+    }
+  }, [router, slug]);
+
+  // ✅ keep your original states
   const [loading, setLoading] = useState(true);
   const [operator, setOperator] = useState<OperatorRow | null>(null);
   const [primaryOperatorId, setPrimaryOperatorId] = useState<string | null>(
@@ -565,10 +592,18 @@ export default function PublicOperatorPage() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [gallerySelected, setGallerySelected] = useState<PhotoRow | null>(null);
 
+  // ✅ operatorId is ONLY valid if UUID
+  const operatorIdFromUrl = useMemo(() => {
+    return isUUID(rawParam) ? rawParam : null;
+  }, [rawParam]);
+
   useEffect(() => {
-    // ✅ NEW: handle missing OR non-UUID id BEFORE calling Supabase
-    if (!operatorIdFromUrl || !isUUID(operatorIdFromUrl)) {
-      console.warn("Invalid operator id in URL:", operatorIdFromUrl);
+    // If this is a section slug, we are redirecting; don't show invalid.
+    if (OPERATOR_SECTIONS.has(slug)) return;
+
+    // ✅ handle missing OR non-UUID id BEFORE calling Supabase
+    if (!operatorIdFromUrl) {
+      console.warn("Invalid operator id in URL:", rawParam);
       setOperator(null);
       setTrips([]);
       setReviews([]);
@@ -584,13 +619,13 @@ export default function PublicOperatorPage() {
       setErrorMsg(null);
 
       try {
-        // 1) Pata operator kutoka operators_view tu (no fallback to operators table)
+        // 1) Load operator from operators_view
         let operatorRow: OperatorRow | null = null;
 
         const { data: opViewRows, error: opViewErr } = await supabase
           .from("operators_view")
           .select("*")
-          .eq("id", operatorIdFromUrl); // now guaranteed UUID
+          .eq("id", operatorIdFromUrl);
 
         if (opViewErr) {
           console.error(
@@ -621,10 +656,8 @@ export default function PublicOperatorPage() {
 
         setOperator(operatorRow);
 
-        // 2) Build operator_id candidates
+        // 2) Build operator_id candidates (UUID only!)
         const idCandidates: string[] = [];
-
-        // ✅ NEW: only push valid UUIDs, avoids 22P02 on .in()
         if (typeof operatorRow.id === "string" && isUUID(operatorRow.id)) {
           idCandidates.push(operatorRow.id);
         }
@@ -634,21 +667,18 @@ export default function PublicOperatorPage() {
         ) {
           idCandidates.push(operatorRow.operator_id);
         }
-        if (
-          typeof operatorRow.user_id === "string" &&
-          isUUID(operatorRow.user_id)
-        ) {
+        if (typeof operatorRow.user_id === "string" && isUUID(operatorRow.user_id)) {
+          // NOTE: only include this if your DB uses user_id as operator_id anywhere
+          // else remove this line to be extra strict
           idCandidates.push(operatorRow.user_id);
         }
 
         const uniqueIds = Array.from(new Set(idCandidates)).filter(Boolean);
-        const operatorIdList =
-          uniqueIds.length > 0 ? uniqueIds : [operatorIdFromUrl];
+        const operatorIdList = uniqueIds.length > 0 ? uniqueIds : [operatorIdFromUrl];
 
-        // Primary operator_id ya kutumia kwenye inserts
         setPrimaryOperatorId(operatorIdList[0]);
 
-        // 3) Load trips, reviews, photos in parallel (faster)
+        // 3) Load trips, reviews, photos
         const [tripsRes, reviewsRes, photosRes] = await Promise.all([
           supabase
             .from("trips")
@@ -699,11 +729,26 @@ export default function PublicOperatorPage() {
     };
 
     load();
-  }, [operatorIdFromUrl]);
+  }, [operatorIdFromUrl, rawParam, slug]);
 
-  /* ───────── Derived values ───────── */
+  // If redirecting to /trips etc, show nothing heavy
+  if (OPERATOR_SECTIONS.has(slug)) {
+    return (
+      <main
+        style={{
+          maxWidth: 1100,
+          margin: "0 auto",
+          padding: "40px 16px",
+          color: "#6B7280",
+          fontSize: 14,
+        }}
+      >
+        Loading…
+      </main>
+    );
+  }
 
-  if (!operatorIdFromUrl || !isUUID(operatorIdFromUrl)) {
+  if (!operatorIdFromUrl) {
     return (
       <main
         style={{
@@ -749,6 +794,8 @@ export default function PublicOperatorPage() {
     );
   }
 
+  /* ───────── Derived values (same idea as yours) ───────── */
+
   const name =
     (operator.name as string) ||
     (operator.company_name as string) ||
@@ -772,9 +819,8 @@ export default function PublicOperatorPage() {
     (operator.contact_email as string) ||
     (operator.operator_email as string);
 
-  // 👉 Override: status iwe Active by default
   const statusLabel = "Active";
-  const isApproved = true; // always show verification badge for now
+  const isApproved = true;
 
   const description =
     (operator.description as string) ||
@@ -782,7 +828,6 @@ export default function PublicOperatorPage() {
 
   const tripsCount = trips.length;
 
-  // Ratings
   const overallRatings = reviews
     .map((r) => r.rating_overall)
     .filter((v): v is number => typeof v === "number");
@@ -796,7 +841,6 @@ export default function PublicOperatorPage() {
     return `${value.toFixed(1)}★`;
   };
 
-  // Gallery fallback images (if no operator_photos yet)
   const gallerySource: PhotoRow[] =
     photos.length > 0
       ? photos
@@ -819,16 +863,10 @@ export default function PublicOperatorPage() {
           },
         ];
 
-  /* ───────── Render ───────── */
+  /* ───────── Render (replace your "...rest of JSX" with your real JSX) ───────── */
 
   return (
-    <main
-      style={{
-        maxWidth: 1120,
-        margin: "0 auto",
-        padding: "24px 16px 64px",
-      }}
-    >
+    <main style={{ maxWidth: 1120, margin: "0 auto", padding: "24px 16px 64px" }}>
       {errorMsg && (
         <div
           style={{
@@ -845,13 +883,7 @@ export default function PublicOperatorPage() {
         </div>
       )}
 
-      {/* ───────── HERO / HEADER ───────── */}
-      {/* ... rest of your JSX (unchanged) ... */}
-
-      {/* I’ve left everything below EXACTLY as you had it, 
-          because the main fix is only about UUID validation
-          & operatorIdList construction. */}
-      {/* ───────── HERO / HEADER ───────── */}
+      {/* HERO / HEADER (keep your original JSX here) */}
       <section
         style={{
           borderRadius: 24,
@@ -860,14 +892,211 @@ export default function PublicOperatorPage() {
           background: "#020617",
           color: "#F9FAFB",
           marginBottom: 24,
+          padding: 18,
         }}
       >
-        {/* ... SNIPPED FOR BREVITY – same as your original code ... */}
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <p style={{ margin: 0, fontSize: 12, opacity: 0.85 }}>{location}</p>
+            <h1 style={{ margin: "6px 0 0", fontSize: 26, fontWeight: 900 }}>
+              {name} {isApproved ? "✅" : ""}
+            </h1>
+            <p style={{ margin: "6px 0 0", fontSize: 13, opacity: 0.9, maxWidth: 700 }}>
+              {description}
+            </p>
+            {contactPerson || email ? (
+              <p style={{ margin: "10px 0 0", fontSize: 12, opacity: 0.9 }}>
+                {contactPerson ? <span>Contact: {contactPerson}</span> : null}
+                {contactPerson && email ? <span> · </span> : null}
+                {email ? <span>Email: {email}</span> : null}
+              </p>
+            ) : null}
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+            <span
+              style={{
+                fontSize: 12,
+                padding: "6px 10px",
+                borderRadius: 999,
+                background: "rgba(255,255,255,0.12)",
+                border: "1px solid rgba(255,255,255,0.18)",
+              }}
+            >
+              {statusLabel} · {tripsCount} trips · {formatStars(avgOverall)}
+            </span>
+
+            <Link
+              href="/"
+              style={{
+                fontSize: 12,
+                color: "#E5E7EB",
+                textDecoration: "underline",
+              }}
+            >
+              Back to main site
+            </Link>
+          </div>
+        </div>
       </section>
 
-      {/* The rest of the component (snapshot, gallery, trips, reviews, quote form)
-          remains identical to what you pasted. */}
-      {/* I didn’t touch those parts at all. */}
+      {/* Gallery (basic) */}
+      <section style={{ marginBottom: 18 }}>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#111827" }}>
+          Gallery
+        </h2>
+        <div
+          style={{
+            marginTop: 10,
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: 10,
+          }}
+        >
+          {gallerySource.slice(0, 6).map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setGallerySelected(p)}
+              style={{
+                border: "1px solid #E5E7EB",
+                borderRadius: 14,
+                overflow: "hidden",
+                background: "#fff",
+                padding: 0,
+                cursor: "pointer",
+                textAlign: "left",
+              }}
+            >
+              <div style={{ height: 120, background: "#F3F4F6" }}>
+                {p.image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={p.image_url}
+                    alt={p.caption || "Operator photo"}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                ) : null}
+              </div>
+              <div style={{ padding: 10 }}>
+                <div style={{ fontSize: 12, color: "#111827", fontWeight: 700 }}>
+                  {p.caption || "Photo"}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {gallerySelected && (
+          <div
+            onClick={() => setGallerySelected(null)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.65)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 16,
+              zIndex: 60,
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                maxWidth: 960,
+                width: "100%",
+                borderRadius: 18,
+                background: "#fff",
+                overflow: "hidden",
+                border: "1px solid #E5E7EB",
+              }}
+            >
+              <div style={{ height: 520, background: "#111827" }}>
+                {gallerySelected.image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={gallerySelected.image_url}
+                    alt={gallerySelected.caption || "Selected photo"}
+                    style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                  />
+                ) : null}
+              </div>
+              <div style={{ padding: 12, display: "flex", justifyContent: "space-between", gap: 10 }}>
+                <div style={{ fontSize: 13, color: "#111827", fontWeight: 700 }}>
+                  {gallerySelected.caption || "Photo"}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setGallerySelected(null)}
+                  style={{
+                    borderRadius: 999,
+                    border: "1px solid #D1D5DB",
+                    background: "#fff",
+                    padding: "6px 10px",
+                    cursor: "pointer",
+                    fontSize: 12,
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Trips (basic list) */}
+      <section style={{ marginBottom: 18 }}>
+        <h2 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#111827" }}>
+          Trips
+        </h2>
+        <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+          {trips.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#6B7280" }}>No trips published yet.</div>
+          ) : (
+            trips.map((t) => (
+              <div
+                key={t.id}
+                style={{
+                  borderRadius: 16,
+                  border: "1px solid #E5E7EB",
+                  background: "#fff",
+                  padding: 12,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: "#111827" }}>
+                    {t.title || "Untitled trip"}
+                  </div>
+                  <div style={{ marginTop: 2, fontSize: 12, color: "#6B7280" }}>
+                    {t.duration ? `${t.duration} days` : "Duration N/A"} · {t.style || "Style N/A"}
+                  </div>
+                </div>
+                <div style={{ fontSize: 12, color: "#111827", fontWeight: 700 }}>
+                  {t.price_from != null ? `$${t.price_from}` : ""}
+                  {t.price_to != null ? ` – $${t.price_to}` : ""}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+
+      {/* Quote request + Review form */}
+      {primaryOperatorId ? (
+        <>
+          <QuoteRequestForm operatorId={primaryOperatorId} operatorName={name} />
+          <ReviewForm
+            operatorId={primaryOperatorId}
+            onCreated={(r) => setReviews((prev) => [r, ...prev])}
+          />
+        </>
+      ) : null}
     </main>
   );
 }
