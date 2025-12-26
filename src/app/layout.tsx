@@ -12,11 +12,7 @@ export const metadata: Metadata = {
   description: "AI powered safari marketplace",
 };
 
-export default async function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const h = await headers();
   const host = (h.get("host") || "").toLowerCase();
 
@@ -42,7 +38,8 @@ export default async function RootLayout({
             </>
           ) : isOperatorHost ? (
             <>
-              <OperatorHeader />
+              {/* ✅ REMOVE OperatorHeader here to avoid double header
+                  Operator layout already renders its own top bar */}
               <main>{children}</main>
             </>
           ) : (
@@ -141,9 +138,7 @@ function AdminHeader() {
             }}
           >
             <div>Restricted access</div>
-            <div style={{ fontSize: 11, opacity: 0.85 }}>
-              For internal marketplace operations only
-            </div>
+            <div style={{ fontSize: 11, opacity: 0.85 }}>For internal marketplace operations only</div>
           </div>
 
           <MainSiteButton />
@@ -153,6 +148,11 @@ function AdminHeader() {
   );
 }
 
+/**
+ * ⚠️ Kept here only in case you ever re-enable it.
+ * Currently NOT used because operator area renders its own header in:
+ * src/app/operators/(panel)/layout.tsx
+ */
 function OperatorHeader() {
   return (
     <header
