@@ -7,41 +7,37 @@ export function proxy(req: NextRequest) {
   const host = hostHeader.split(":")[0].toLowerCase();
   const pathname = url.pathname;
 
+  // ✅ Never proxy internal Next routes OR API routes
+  // If you rewrite /api -> /operators/api... you will break JSON endpoints.
+  if (
+    pathname.startsWith("/api") ||
+    pathname.startsWith("/_next") ||
+    pathname === "/favicon.ico" ||
+    pathname === "/robots.txt" ||
+    pathname === "/sitemap.xml"
+  ) {
+    return NextResponse.next();
+  }
+
   const isAdminHost = host.startsWith("admin.");
   const isOperatorHost = host.startsWith("operator.");
 
-  /* ========== ADMIN SUBDOMAIN ==============
-     admin.safariconnector.com
-     - "/"       → /admin        (dashboard)
-     - "/login"  → /admin/login  (real admin login)
-     - any other path → handled normally (/, /operators, /bookings, etc.)
-  ============================================ */
+  /* ========== ADMIN SUBDOMAIN ============== */
   if (isAdminHost) {
-    // Root of admin subdomain => admin dashboard
     if (pathname === "/") {
       url.pathname = "/admin";
-      // REWRITE so hakuna redirect-loop; URL inabaki "/", content ni /admin
       return NextResponse.rewrite(url);
     }
 
-    // Convenience: if anything sends user to /login on admin subdomain,
-    // tumpeleke kwenye admin login halisi.
     if (pathname === "/login") {
       url.pathname = "/admin/login";
       return NextResponse.rewrite(url);
     }
 
-    // All other paths on admin subdomain: endelea normally
-    // (e.g. /operators, /bookings, /payments, /support, /analytics, /admin, etc.)
     return NextResponse.next();
   }
 
-  /* =============== OPERATOR SUBDOMAIN ===============
-     operator.safariconnector.com
-     - "/"       → /operators
-     - "/login"  → /operators/login
-     - any other → /operators<path>  (unless already starts with /operators)
-  ==================================================== */
+  /* =============== OPERATOR SUBDOMAIN =============== */
   if (isOperatorHost) {
     if (pathname === "/") {
       url.pathname = "/operators";
@@ -54,19 +50,18 @@ export function proxy(req: NextRequest) {
       return NextResponse.rewrite(internal);
     }
 
+    // if already scoped to /operators, allow normally
     if (pathname.startsWith("/operators")) {
       return NextResponse.next();
     }
 
+    // ✅ Important: do not rewrite anything else that should remain root-level
+    // (we already excluded /api above)
     url.pathname = `/operators${pathname}`;
     return NextResponse.rewrite(url);
   }
 
-  /* ================= ROOT DOMAIN =====================
-     safariconnector.com / www.safariconnector.com
-     - Block direct access to /admin and /operators
-       on the main public site by redirecting to "/".
-  ===================================================== */
+  /* ================= ROOT DOMAIN ===================== */
   if (pathname.startsWith("/admin") || pathname.startsWith("/operators")) {
     url.pathname = "/";
     return NextResponse.redirect(url);
@@ -75,6 +70,7 @@ export function proxy(req: NextRequest) {
   return NextResponse.next();
 }
 
+// ✅ Exclude /api from matcher as well (belt + suspenders)
 export const config = {
-  matcher: ["/((?!_next|favicon.ico|robots.txt|sitemap.xml).*)"],
+  matcher: ["/((?!api|_next|favicon.ico|robots.txt|sitemap.xml).*)"],
 };
