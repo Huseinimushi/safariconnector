@@ -1,94 +1,146 @@
-// src/app/enquiries/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { useAuth } from "@/components/AuthProvider";
-import { supabaseBrowser } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 
 type OperatorRow = {
   id: string;
-  name: string | null;
+  user_id?: string | null;
+  name?: string | null;
+  company_name?: string | null;
 };
 
 type QuoteRequestRow = {
-  id: string;
-  trip_id: string;
+  id: number;
+  operator_id: string | null;
+  trip_id: string | null;
   trip_title: string | null;
   date: string | null;
   pax: number | null;
-  name: string;
-  email: string;
+  name: string | null;
+  email: string | null;
   phone: string | null;
   note: string | null;
   created_at: string | null;
 };
 
+const formatDateTime = (value: string | null) => {
+  if (!value) return "-";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+};
+
+const formatDateShort = (value: string | null) => {
+  if (!value) return "Flexible date";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+};
+
 export default function OperatorEnquiriesPage() {
-  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [operator, setOperator] = useState<OperatorRow | null>(null);
   const [requests, setRequests] = useState<QuoteRequestRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [authed, setAuthed] = useState<boolean>(true);
 
-  // Step 1: pata operator by user_id + enquiries
   useEffect(() => {
-    if (!user) {
-      setLoading(false);
-      return;
-    }
+    let alive = true;
 
-    const loadOperatorAndRequests = async () => {
+    const load = async () => {
       setLoading(true);
       setError(null);
 
       try {
-        const { data: opData, error: opErr } = await supabaseBrowser
-          .from("operators")
-          .select("id, name")
+        // 1) Auth
+        const { data: userRes, error: userErr } = await supabase.auth.getUser();
+        if (userErr) console.warn("enquiries getUser error:", userErr);
+
+        const user = userRes?.user;
+        if (!user) {
+          if (!alive) return;
+          setAuthed(false);
+          setOperator(null);
+          setRequests([]);
+          setLoading(false);
+          return;
+        }
+
+        setAuthed(true);
+
+        // 2) Operator profile (operators_view → operators fallback)
+        let opRow: OperatorRow | null = null;
+
+        const { data: opView, error: opViewErr } = await supabase
+          .from("operators_view")
+          .select("id,user_id,name,company_name")
           .eq("user_id", user.id)
           .maybeSingle();
 
-        if (opErr) {
-          console.error("load operator error:", opErr);
-          setError(opErr.message || "Failed to load operator profile.");
+        if (opViewErr) console.warn("operators_view enquiries error:", opViewErr);
+        if (opView) opRow = opView as OperatorRow;
+
+        if (!opRow) {
+          const { data: op, error: opErr } = await supabase
+            .from("operators")
+            .select("id,user_id,name,company_name")
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+          if (opErr) console.warn("operators fallback enquiries error:", opErr);
+          if (op) opRow = op as OperatorRow;
+        }
+
+        if (!opRow?.id) {
+          if (!alive) return;
+          setOperator(null);
+          setRequests([]);
+          setError("No operator profile found for this account. Please complete operator onboarding.");
           setLoading(false);
           return;
         }
 
-        if (!opData) {
-          setError(
-            "No operator profile found for this account. Please complete your operator onboarding."
-          );
+        if (!alive) return;
+        setOperator(opRow);
+
+        // 3) Load enquiries directly from quote_requests (NO fetch to /api)
+        const { data: qRows, error: qErr } = await supabase
+          .from("quote_requests")
+          .select("id,operator_id,trip_id,trip_title,date,pax,name,email,phone,note,created_at")
+          .eq("operator_id", opRow.id)
+          .order("created_at", { ascending: false });
+
+        if (qErr) {
+          console.error("load quote_requests error:", qErr);
+          if (!alive) return;
+          setRequests([]);
+          setError(qErr.message || "Failed to load enquiries.");
           setLoading(false);
           return;
         }
 
-        setOperator(opData as OperatorRow);
-
-        const res = await fetch(
-          `/api/quote-requests/by-operator?operator_id=${opData.id}`
-        );
-        const json = await res.json();
-
-        if (!res.ok) {
-          console.error("fetch quote-requests error:", json);
-          setError(json?.error || "Failed to load enquiries.");
-        } else {
-          setRequests(json.requests || []);
-        }
+        if (!alive) return;
+        setRequests((qRows || []) as QuoteRequestRow[]);
       } catch (e: any) {
         console.error("Unexpected error loading operator enquiries:", e);
-        setError(e?.message || "Unexpected error.");
+        if (alive) setError(e?.message || "Unexpected error.");
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     };
 
-    loadOperatorAndRequests();
-  }, [user]);
+    load();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-  // --- simple layout styles (to match your existing design) ---
+  const operatorLabel =
+    (operator?.company_name as string) || (operator?.name as string) || "";
+
+  // --- Styles (match your existing design) ---
   const wrap: React.CSSProperties = {
     maxWidth: 960,
     margin: "0 auto",
@@ -128,15 +180,23 @@ export default function OperatorEnquiriesPage() {
     gap: 12,
     fontSize: 12,
     color: "#6b7280",
+    flexWrap: "wrap",
   };
 
-  if (!user) {
+  if (!authed) {
     return (
       <main style={wrap}>
         <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>
           Traveller Enquiries
         </h1>
-        <p>Please sign in as an operator to view your enquiries.</p>
+        <p style={{ color: "#6b7280" }}>
+          Please sign in as an operator to view your enquiries.
+        </p>
+        <div style={{ marginTop: 14 }}>
+          <Link href="/login" style={{ ...backBtn, display: "inline-block" }}>
+            Go to login →
+          </Link>
+        </div>
       </main>
     );
   }
@@ -147,23 +207,20 @@ export default function OperatorEnquiriesPage() {
       <div style={headingRow}>
         <div>
           <h1 style={{ fontSize: 28, fontWeight: 700, marginBottom: 4 }}>
-            Traveller Enquiries
-            {operator?.name ? ` – ${operator.name}` : ""}
+            Traveller Enquiries{operatorLabel ? ` – ${operatorLabel}` : ""}
           </h1>
           <p style={{ fontSize: 14, color: "#6b7280", maxWidth: 520 }}>
-            All quote requests sent from your published trips. Respond quickly
-            and turn conversations into confirmed bookings.
+            All quote requests sent from your published trips. Respond quickly and turn
+            conversations into confirmed bookings.
           </p>
         </div>
 
-        <a href="/dashboard" style={backBtn}>
+        <Link href="/dashboard" style={backBtn}>
           ← Back to dashboard
-        </a>
+        </Link>
       </div>
 
-      {loading && (
-        <p style={{ fontSize: 14, color: "#6b7280" }}>Loading enquiries…</p>
-      )}
+      {loading && <p style={{ fontSize: 14, color: "#6b7280" }}>Loading enquiries…</p>}
 
       {!loading && error && (
         <div
@@ -181,8 +238,7 @@ export default function OperatorEnquiriesPage() {
 
       {!loading && !error && requests.length === 0 && (
         <p style={{ fontSize: 14, color: "#6b7280", marginTop: 12 }}>
-          No enquiries yet. Once travellers send quote requests from your
-          trips, they will appear here.
+          No enquiries yet. Once travellers send quote requests from your trips, they will appear here.
         </p>
       )}
 
@@ -196,70 +252,44 @@ export default function OperatorEnquiriesPage() {
 
               <div style={metaRow}>
                 <div>
-                  <span>
-                    {r.date
-                      ? new Date(r.date).toLocaleDateString()
-                      : "Flexible date"}
-                  </span>
+                  <span>{formatDateShort(r.date)}</span>
                   {" • "}
-                  <span>{r.pax ?? 1} traveller(s)</span>
+                  <span>{r.pax ?? "Not specified"} traveller(s)</span>
                 </div>
-                {r.created_at && (
-                  <span>
-                    Received:{" "}
-                    {new Date(r.created_at).toLocaleString(undefined, {
-                      dateStyle: "medium",
-                      timeStyle: "short",
-                    })}
-                  </span>
-                )}
+
+                <span>Received: {formatDateTime(r.created_at)}</span>
               </div>
 
-              <div
-                style={{
-                  marginTop: 6,
-                  fontSize: 13,
-                  color: "#374151",
-                }}
-              >
-                From:{" "}
-                <span style={{ fontWeight: 600 }}>{r.name}</span>
+              <div style={{ marginTop: 6, fontSize: 13, color: "#374151" }}>
+                From: <span style={{ fontWeight: 600 }}>{r.name || "Traveller"}</span>
                 {" • "}
-                <span>{r.email}</span>
-                {r.phone && <span> • {r.phone}</span>}
+                <span>{r.email || "-"}</span>
+                {r.phone ? <span>{" • "}{r.phone}</span> : null}
               </div>
 
               {r.note && (
-                <p
-                  style={{
-                    marginTop: 8,
-                    fontSize: 13,
-                    color: "#111827",
-                    whiteSpace: "pre-line",
-                  }}
-                >
+                <p style={{ marginTop: 8, fontSize: 13, color: "#111827", whiteSpace: "pre-line" }}>
                   {r.note}
                 </p>
               )}
 
-              {/* CTA: open quote + chat (AI side) */}
+              {/* CTA: open AI quotes/chat page */}
               <div
                 style={{
                   marginTop: 10,
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
+                  gap: 12,
                   fontSize: 12,
                 }}
               >
                 <span style={{ color: "#6b7280" }}>
-                  Start a quote to chat with this traveller and move towards a
-                  confirmed booking.
+                  Open the chat to reply, send a quote, and move towards a confirmed booking.
                 </span>
+
                 <Link
-                  href={`/quotes?from_enquiry=${encodeURIComponent(
-                    r.id
-                  )}`}
+                  href={`/quotes?enquiry_id=${encodeURIComponent(String(r.id))}`}
                   style={{
                     textDecoration: "none",
                     fontWeight: 600,
