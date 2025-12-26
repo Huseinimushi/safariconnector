@@ -1,222 +1,299 @@
-// src/app/operators/(panel)/layout.tsx
-import React from "react";
+"use client";
+
+import React, { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { headers } from "next/headers";
-import { createClient } from "@supabase/supabase-js";
+import { usePathname, useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 
-export const dynamic = "force-dynamic";
+const BRAND = {
+  bg: "#F4F3ED",
+  sidebar: "#1B4D3E",
+  topbar: "#1B4D3E",
+  panel: "#FFFFFF",
+  borderSoft: "#E1E5ED",
+};
 
-/* ---------------- Supabase server client ---------------- */
-const supabaseServer = () =>
-  createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+type OperatorPanelProps = { children: ReactNode };
 
-/* ---------------- Navigation ---------------- */
-const NAV = [
-  { href: "/operators", label: "Dashboard", icon: "🏠" },
-  { href: "/operators/trips", label: "Trips", icon: "🗺️" },
-  { href: "/operators/bookings", label: "Bookings", icon: "🧾" },
-  { href: "/operators/enquiries", label: "Enquiries", icon: "📩" },
-  { href: "/operators/quotes", label: "Quotes", icon: "💬" },
-  { href: "/operators/messages", label: "Messages", icon: "✉️" },
-  { href: "/operators/profile", label: "Profile", icon: "👤" },
-];
+type OperatorRow = {
+  id: string;
+  user_id?: string | null;
+  company_name?: string | null;
+  name?: string | null;
+  status?: string | null;
+};
 
-export default async function OperatorPanelLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const h = await headers();
-  const host = (h.get("host") || "").toLowerCase();
+export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
+  const pathname = usePathname();
+  const router = useRouter();
 
-  const rootDomain = host.replace(/^operator\./, "").replace(/^admin\./, "");
-  const mainSiteUrl = `https://${rootDomain}`;
+  const [companyName, setCompanyName] = useState<string>("—");
+  const [loadingCompany, setLoadingCompany] = useState(true);
 
-  /* ---------------- Load operator company name ---------------- */
-  let companyName: string | null = null;
+  useEffect(() => {
+    let alive = true;
 
-  try {
-    const supabase = supabaseServer();
+    const loadCompany = async () => {
+      setLoadingCompany(true);
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      try {
+        const { data: userRes } = await supabase.auth.getUser();
+        const uid = userRes?.user?.id;
 
-    if (user?.id) {
-      const { data: opView } = await supabase
-        .from("operators_view")
-        .select("company_name")
-        .eq("user_id", user.id)
-        .maybeSingle();
+        if (!uid) {
+          if (!alive) return;
+          setCompanyName("—");
+          setLoadingCompany(false);
+          return;
+        }
 
-      if (opView?.company_name) {
-        companyName = opView.company_name;
-      } else {
-        const { data: op } = await supabase
-          .from("operators")
-          .select("company_name")
-          .eq("user_id", user.id)
+        // operators_view first
+        const { data: opView, error: opViewErr } = await supabase
+          .from("operators_view")
+          .select("id,user_id,company_name,name,status")
+          .eq("user_id", uid)
           .maybeSingle();
 
-        companyName = op?.company_name ?? null;
-      }
-    }
-  } catch {
-    companyName = null;
-  }
+        if (!opViewErr && opView) {
+          if (!alive) return;
+          setCompanyName(opView.company_name || opView.name || "—");
+          setLoadingCompany(false);
+          return;
+        }
 
-  const sidebarW = 92;
+        // fallback operators table
+        const { data: op, error: opErr } = await supabase
+          .from("operators")
+          .select("id,user_id,company_name,name,status")
+          .eq("user_id", uid)
+          .maybeSingle();
+
+        if (!alive) return;
+
+        if (opErr) {
+          setCompanyName("—");
+          setLoadingCompany(false);
+          return;
+        }
+
+        setCompanyName(op?.company_name || op?.name || "—");
+        setLoadingCompany(false);
+      } catch {
+        if (!alive) return;
+        setCompanyName("—");
+        setLoadingCompany(false);
+      }
+    };
+
+    loadCompany();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.replace("/login");
+  };
+
+  const NAV = useMemo(
+    () => [
+      { href: "/dashboard", label: "Dashboard", icon: "🏠" },
+      { href: "/trips", label: "Trips", icon: "🗺️" },
+      { href: "/bookings", label: "Bookings", icon: "📑" },
+      { href: "/enquiries", label: "Enquiries", icon: "📬" },
+      { href: "/quotes", label: "Quotes", icon: "💬" },
+      { href: "/inbox", label: "Messages", icon: "✉️" },
+      { href: "/profile", label: "Profile", icon: "👤" },
+    ],
+    []
+  );
+
+  const isActive = (href: string) => {
+    if (!pathname) return false;
+    return pathname === href || pathname.startsWith(href + "/") || pathname.startsWith(href + "?");
+  };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#F6F4EE" }}>
-      {/* ───────────── Top bar ───────────── */}
-      <header
+    <div style={{ minHeight: "100vh", display: "flex", background: BRAND.bg }}>
+      {/* SIDEBAR (ONLY ONCE) */}
+      <aside
         style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 20,
-          height: 56,
-          background: "#1B4D3E",
-          color: "#FFFFFF",
-          borderBottom: "1px solid rgba(255,255,255,0.15)",
+          width: 92,
+          background: BRAND.sidebar,
+          color: "#FFF",
           display: "flex",
+          flexDirection: "column",
+          padding: "14px 6px",
           alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 14px",
+          gap: 14,
+          flexShrink: 0,
         }}
       >
-        <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-          <div style={{ fontWeight: 900, letterSpacing: "0.12em" }}>
-            SAFARI CONNECTOR
-          </div>
-          <div style={{ fontSize: 12, opacity: 0.9 }}>
-            Operator workspace
-          </div>
-        </div>
+        {NAV.map((item) => {
+          const active = isActive(item.href);
 
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{ fontSize: 12, opacity: 0.9 }}>
-            Manage trips, quotes & bookings
-          </div>
-
-          <a
-            href={mainSiteUrl}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              borderRadius: 999,
-              padding: "7px 12px",
-              border: "1px solid rgba(255,255,255,0.35)",
-              background: "rgba(0,0,0,0.1)",
-              color: "#FFFFFF",
-              fontSize: 12,
-              fontWeight: 800,
-              textDecoration: "none",
-            }}
-          >
-            Main website →
-          </a>
-        </div>
-      </header>
-
-      {/* ───────────── Shell ───────────── */}
-      <div style={{ display: "flex" }}>
-        {/* Sidebar */}
-        <aside
-          style={{
-            width: sidebarW,
-            minWidth: sidebarW,
-            background: "#214B41",
-            borderRight: "1px solid rgba(255,255,255,0.08)",
-            paddingTop: 14,
-            paddingBottom: 14,
-            position: "sticky",
-            top: 56,
-            height: "calc(100vh - 56px)",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-          }}
-        >
-          <nav
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 14,
-              alignItems: "center",
-            }}
-          >
-            {NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                style={{
-                  width: 68,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 6,
-                  textDecoration: "none",
-                  color: "#E7F3EE",
-                }}
-              >
-                <div
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 999,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    background: "rgba(0,0,0,0.1)",
-                    border: "1px solid rgba(255,255,255,0.18)",
-                    fontSize: 18,
-                  }}
-                >
-                  {item.icon}
-                </div>
-                <div style={{ fontSize: 11, fontWeight: 700 }}>
-                  {item.label}
-                </div>
-              </Link>
-            ))}
-          </nav>
-
-          {/* ───────── Company name (FIXED HERE) ───────── */}
-          <div
-            style={{
-              marginTop: "auto",
-              paddingTop: 12,
-              borderTop: "1px solid rgba(255,255,255,0.15)",
-              textAlign: "center",
-              fontSize: 10,
-              letterSpacing: "0.12em",
-              color: "rgba(255,255,255,0.85)",
-              width: "100%",
-            }}
-          >
-            YOUR COMPANY
-            <div
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              title={item.label}
               style={{
-                marginTop: 6,
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: "normal",
-                color: "#FFFFFF",
-                padding: "0 6px",
-                wordBreak: "break-word",
+                textDecoration: "none",
+                width: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                gap: 4,
+                padding: "4px 0",
               }}
             >
-              {companyName || "—"}
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 999,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 22,
+                  border: active ? "2px solid #F9FAFB" : "1px solid rgba(255,255,255,0.35)",
+                }}
+              >
+                {item.icon}
+              </div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: active ? "#FFF" : "#D1D5DB",
+                  fontWeight: active ? 700 : 500,
+                  textAlign: "center",
+                }}
+              >
+                {item.label}
+              </div>
+            </Link>
+          );
+        })}
+
+        {/* COMPANY NAME FOOTER (BOTTOM LEFT) */}
+        <div
+          style={{
+            marginTop: "auto",
+            width: "100%",
+            padding: "10px 6px 8px",
+            textAlign: "center",
+            borderTop: "1px solid rgba(255,255,255,0.25)",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 9,
+              textTransform: "uppercase",
+              letterSpacing: "0.16em",
+              color: "rgba(226,232,240,0.9)",
+              marginBottom: 6,
+            }}
+          >
+            Your company
+          </div>
+
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 800,
+              color: "#F9FAFB",
+              lineHeight: 1.2,
+              wordBreak: "break-word",
+              minHeight: 28,
+            }}
+          >
+            {loadingCompany ? "Loading…" : companyName || "—"}
+          </div>
+
+          <div style={{ fontSize: 10, color: "rgba(226,232,240,0.65)", marginTop: 4 }}>—</div>
+        </div>
+
+        <button
+          onClick={handleLogout}
+          title="Logout"
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 999,
+            border: "1px solid rgba(255,255,255,0.3)",
+            color: "#FCA5A5",
+            background: "transparent",
+            fontSize: 18,
+            cursor: "pointer",
+            marginTop: 10,
+          }}
+        >
+          ⏏
+        </button>
+      </aside>
+
+      {/* RIGHT SIDE */}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+        {/* TOPBAR (ONLY ONCE) */}
+        <header
+          style={{
+            background: BRAND.topbar,
+            color: "#FFF",
+            padding: "10px 18px",
+            borderBottom: "1px solid rgba(255,255,255,0.12)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ lineHeight: 1.1 }}>
+              <div style={{ fontWeight: 900, letterSpacing: "0.12em", fontSize: 14 }}>SAFARI CONNECTOR</div>
+              <div style={{ fontSize: 12, opacity: 0.85 }}>Operator workspace</div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ fontSize: 12, opacity: 0.9 }}>Manage trips, quotes & bookings</div>
+
+              <Link
+                href="/"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  borderRadius: 999,
+                  padding: "6px 12px",
+                  border: "1px solid rgba(255,255,255,0.35)",
+                  background: "rgba(0,0,0,0.12)",
+                  color: "#FFF",
+                  textDecoration: "none",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Main website →
+              </Link>
             </div>
           </div>
-        </aside>
+        </header>
 
-        {/* Content */}
-        <div style={{ flex: 1, minWidth: 0 }}>{children}</div>
+        {/* PAGE CONTENT */}
+        <main style={{ flex: 1, padding: "26px 28px 32px" }}>{children}</main>
+
+        <footer
+          style={{
+            borderTop: `1px solid ${BRAND.borderSoft}`,
+            background: BRAND.panel,
+            padding: "10px 24px",
+            fontSize: 11,
+            color: "#6B7280",
+            display: "flex",
+            justifyContent: "space-between",
+          }}
+        >
+          <span>Operator workspace</span>
+          <span>Safari Connector</span>
+        </footer>
       </div>
     </div>
   );
