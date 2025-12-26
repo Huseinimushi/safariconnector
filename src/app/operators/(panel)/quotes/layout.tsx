@@ -1,8 +1,9 @@
-"use client";
-
+// src/app/operators/(panel)/quotes/layout.tsx
 import React, { type ReactNode } from "react";
 
+export const dynamic = "force-dynamic";
+
 export default function OperatorQuotesLayout({ children }: { children: ReactNode }) {
-  // Simple wrapper. Sidebar iko kwenye layout ya (panel) juu already.
+  // Sidebar/topbar iko kwenye (panel) layout tayari.
   return <>{children}</>;
 }
