@@ -1,4 +1,4 @@
-// src/app/quotes/page.tsx
+// src/app/operators/(panel)/quotes/page.tsx
 import { Suspense } from "react";
 import OperatorsQuotesClient from "./OperatorsQuotesClient";
 

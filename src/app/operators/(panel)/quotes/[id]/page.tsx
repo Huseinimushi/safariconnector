@@ -1,7 +1,8 @@
+// src/app/operators/(panel)/quotes/[id]/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -66,17 +67,11 @@ const formatStatusLabel = (status?: string | null) => {
 
 const isClosedStatus = (status?: string | null) => {
   const s = (status || "").toLowerCase();
-  return (
-    s === "closed_by_traveller" ||
-    s === "closed" ||
-    s === "archived" ||
-    s === "cancelled"
-  );
+  return s === "closed_by_traveller" || s === "closed" || s === "archived" || s === "cancelled";
 };
 
 export default function OperatorQuoteChatPage() {
   const params = useParams();
-  const router = useRouter();
   const quoteId = params?.id as string | undefined;
 
   const [quote, setQuote] = useState<QuoteRow | null>(null);
@@ -111,23 +106,12 @@ export default function OperatorQuoteChatPage() {
         // resolve operator_id from logged-in user
         let operatorId: string | null = null;
 
-        const { data: opViewRows } = await supabase
-          .from("operators_view")
-          .select("id, user_id")
-          .eq("user_id", user.id)
-          .limit(1);
-
+        const { data: opViewRows } = await supabase.from("operators_view").select("id, user_id").eq("user_id", user.id).limit(1);
         if (opViewRows && opViewRows.length > 0) {
           operatorId = opViewRows[0].id as string;
         } else {
-          const { data: opRows } = await supabase
-            .from("operators")
-            .select("id, user_id")
-            .eq("user_id", user.id)
-            .limit(1);
-          if (opRows && opRows.length > 0) {
-            operatorId = opRows[0].id as string;
-          }
+          const { data: opRows } = await supabase.from("operators").select("id, user_id").eq("user_id", user.id).limit(1);
+          if (opRows && opRows.length > 0) operatorId = opRows[0].id as string;
         }
 
         if (!operatorId) {
@@ -164,8 +148,8 @@ export default function OperatorQuoteChatPage() {
         }
 
         const qRow = quoteRows[0] as QuoteRow;
-
         if (!isMounted) return;
+
         setQuote(qRow);
         setLoadingQuote(false);
 
@@ -210,10 +194,7 @@ export default function OperatorQuoteChatPage() {
     if (!quote || !quoteId) return;
     const text = newMessage.trim();
     if (!text) return;
-    if (closed) {
-      // safety: usitume kama tayari imefungwa
-      return;
-    }
+    if (closed) return;
 
     setSending(true);
     setErrorMsg(null);
@@ -256,9 +237,7 @@ export default function OperatorQuoteChatPage() {
         if (statusErr) {
           console.warn("operator update status error:", statusErr);
         } else {
-          setQuote((prev) =>
-            prev ? { ...prev, status: "answered" } : prev
-          );
+          setQuote((prev) => (prev ? { ...prev, status: "answered" } : prev));
         }
       }
     } catch (err: any) {
@@ -272,13 +251,7 @@ export default function OperatorQuoteChatPage() {
   const disableInput = closed || loadingQuote || sending;
 
   return (
-    <main
-      style={{
-        maxWidth: 980,
-        margin: "0 auto",
-        padding: "32px 16px 64px",
-      }}
-    >
+    <main style={{ maxWidth: 980, margin: "0 auto", padding: "32px 16px 64px" }}>
       {/* Top bar: title + back */}
       <section
         style={{
@@ -301,21 +274,14 @@ export default function OperatorQuoteChatPage() {
           >
             Guest enquiry
           </div>
-          <h1
-            style={{
-              margin: 0,
-              fontSize: 26,
-              fontWeight: 900,
-              color: "#14532D",
-            }}
-          >
+          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 900, color: "#14532D" }}>
             {quote?.guest_name || "Safari Connector traveller"}
           </h1>
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <Link
-            href="/quotes"
+            href="/operators/quotes"
             style={{
               borderRadius: 999,
               padding: "7px 14px",
@@ -368,31 +334,16 @@ export default function OperatorQuoteChatPage() {
           }}
         >
           <div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "#4B5563",
-              }}
-            >
-              Enquiry received{" "}
-              {quote?.created_at ? formatFullDate(quote.created_at) : "-"}
+            <div style={{ fontSize: 13, color: "#4B5563" }}>
+              Enquiry received {quote?.created_at ? formatFullDate(quote.created_at) : "-"}
             </div>
-            <div
-              style={{
-                marginTop: 4,
-                fontSize: 12,
-                color: "#4B5563",
-              }}
-            >
+            <div style={{ marginTop: 4, fontSize: 12, color: "#4B5563" }}>
               Travel dates:{" "}
               {quote?.travel_start_date && quote.travel_end_date
-                ? `${formatDateShort(quote.travel_start_date)} – ${formatDateShort(
-                    quote.travel_end_date
-                  )}`
+                ? `${formatDateShort(quote.travel_start_date)} – ${formatDateShort(quote.travel_end_date)}`
                 : "Not specified"}
               {"  •  "}
-              Group size:{" "}
-              {quote?.group_size ? quote.group_size : "Not specified"}
+              Group size: {quote?.group_size ? quote.group_size : "Not specified"}
             </div>
           </div>
 
@@ -405,9 +356,7 @@ export default function OperatorQuoteChatPage() {
                 fontWeight: 600,
                 backgroundColor: closed ? "#FEE2E2" : "#FEF3C7",
                 color: closed ? "#B91C1C" : "#92400E",
-                border: closed
-                  ? "1px solid #FCA5A5"
-                  : "1px solid #FDE68A",
+                border: closed ? "1px solid #FCA5A5" : "1px solid #FDE68A",
               }}
             >
               {statusLabel}
@@ -429,27 +378,12 @@ export default function OperatorQuoteChatPage() {
           }}
         >
           {loadingReplies ? (
-            <div
-              style={{
-                fontSize: 13,
-                color: "#6B7280",
-              }}
-            >
-              Loading conversation…
-            </div>
+            <div style={{ fontSize: 13, color: "#6B7280" }}>Loading conversation…</div>
           ) : replies.length === 0 ? (
-            <div
-              style={{
-                fontSize: 13,
-                color: "#6B7280",
-              }}
-            >
-              No messages yet.
-            </div>
+            <div style={{ fontSize: 13, color: "#6B7280" }}>No messages yet.</div>
           ) : (
             replies.map((r) => {
-              const isOperator =
-                (r.sender_role || "operator").toLowerCase() === "operator";
+              const isOperator = (r.sender_role || "operator").toLowerCase() === "operator";
 
               return (
                 <div
@@ -468,31 +402,15 @@ export default function OperatorQuoteChatPage() {
                       fontSize: 13,
                       lineHeight: 1.5,
                       backgroundColor: isOperator ? "#DCFCE7" : "#FFFFFF",
-                      border: isOperator
-                        ? "1px solid #A7F3D0"
-                        : "1px solid #E5E7EB",
+                      border: isOperator ? "1px solid #A7F3D0" : "1px solid #E5E7EB",
                     }}
                   >
-                    <div
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: "#6B7280",
-                        marginBottom: 2,
-                      }}
-                    >
+                    <div style={{ fontSize: 11, fontWeight: 600, color: "#6B7280", marginBottom: 2 }}>
                       {isOperator ? "You" : quote?.guest_name || "Traveller"}
                     </div>
                     <div>{r.message}</div>
                     {r.created_at && (
-                      <div
-                        style={{
-                          marginTop: 3,
-                          fontSize: 10,
-                          color: "#9CA3AF",
-                          textAlign: "right",
-                        }}
-                      >
+                      <div style={{ marginTop: 3, fontSize: 10, color: "#9CA3AF", textAlign: "right" }}>
                         {formatDateShort(r.created_at)}
                       </div>
                     )}
@@ -505,45 +423,19 @@ export default function OperatorQuoteChatPage() {
 
         {/* info if closed */}
         {closed && (
-          <div
-            style={{
-              marginTop: 10,
-              fontSize: 12,
-              color: "#B91C1C",
-            }}
-          >
-            This conversation has been closed by the traveller. You can still
-            read previous messages but cannot send new replies.
+          <div style={{ marginTop: 10, fontSize: 12, color: "#B91C1C" }}>
+            This conversation has been closed by the traveller. You can still read previous messages but cannot send new replies.
           </div>
         )}
 
         {/* composer */}
-        <div
-          style={{
-            marginTop: 14,
-            borderTop: "1px solid #E5E7EB",
-            paddingTop: 10,
-          }}
-        >
-          <div
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              marginBottom: 6,
-              color: "#111827",
-            }}
-          >
-            Your reply
-          </div>
+        <div style={{ marginTop: 14, borderTop: "1px solid #E5E7EB", paddingTop: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: "#111827" }}>Your reply</div>
           <textarea
             value={newMessage}
             disabled={disableInput}
             onChange={(e) => setNewMessage(e.target.value)}
-            placeholder={
-              closed
-                ? "Conversation closed by traveller."
-                : "Write your reply to the traveller here…"
-            }
+            placeholder={closed ? "Conversation closed by traveller." : "Write your reply to the traveller here…"}
             style={{
               width: "100%",
               minHeight: 80,
@@ -556,41 +448,23 @@ export default function OperatorQuoteChatPage() {
               backgroundColor: disableInput ? "#F9FAFB" : "#FFFFFF",
             }}
           />
-          <div
-            style={{
-              marginTop: 8,
-              display: "flex",
-              justifyContent: "flex-start",
-            }}
-          >
+          <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-start" }}>
             <button
               type="button"
               onClick={handleSend}
-              disabled={
-                disableInput || newMessage.trim().length === 0
-              }
+              disabled={disableInput || newMessage.trim().length === 0}
               style={{
                 borderRadius: 999,
                 padding: "8px 18px",
-                backgroundColor:
-                  disableInput || newMessage.trim().length === 0
-                    ? "#9CA3AF"
-                    : "#14532D",
+                backgroundColor: disableInput || newMessage.trim().length === 0 ? "#9CA3AF" : "#14532D",
                 color: "#FFFFFF",
                 fontSize: 13,
                 fontWeight: 600,
                 border: "none",
-                cursor:
-                  disableInput || newMessage.trim().length === 0
-                    ? "default"
-                    : "pointer",
+                cursor: disableInput || newMessage.trim().length === 0 ? "default" : "pointer",
               }}
             >
-              {closed
-                ? "Conversation closed"
-                : sending
-                ? "Sending…"
-                : "Send reply"}
+              {closed ? "Conversation closed" : sending ? "Sending…" : "Send reply"}
             </button>
           </div>
         </div>

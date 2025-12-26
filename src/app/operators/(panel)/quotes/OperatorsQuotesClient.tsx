@@ -1,4 +1,4 @@
-// src/app/quotes/OperatorsQuotesClient.tsx
+// src/app/operators/(panel)/quotes/OperatorsQuotesClient.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -461,7 +461,7 @@ export default function OperatorsQuotesClient() {
 
     const params = new URLSearchParams(searchParams?.toString() || "");
     params.set("enquiry_id", String(id));
-    router.replace(`/quotes?${params.toString()}`);
+    router.replace(`/operators/quotes?${params.toString()}`);
   };
 
   const handleSendMessage = async () => {
@@ -741,7 +741,7 @@ export default function OperatorsQuotesClient() {
         </div>
 
         <Link
-          href="/dashboard"
+          href="/operators/dashboard"
           style={{
             borderRadius: 999,
             padding: "7px 14px",
@@ -815,15 +815,17 @@ export default function OperatorsQuotesClient() {
                 backgroundColor: "#F9FAFB",
               }}
             >
-              You haven&apos;t received any traveller enquiries yet. When a traveller requests a quote from one of your trips, it will appear here.
+              You haven&apos;t received any traveller enquiries yet. When a traveller requests a quote from one of your trips,
+              it will appear here.
             </div>
           ) : (
             <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 8, maxHeight: 460, overflowY: "auto" }}>
               {enquiries.map((q) => {
                 const isActive = selectedEnquiryId != null && q.id === selectedEnquiryId;
 
-                const hasQuote = !!(quote && selectedEnquiry && quote.quote_request_id === selectedEnquiry.id);
-                const hasBooking = !!(booking && quote && booking.quote_id === quote.id);
+                const isCurrentSelected = selectedEnquiry?.id === q.id;
+                const hasQuote = !!(quote && isCurrentSelected && quote.quote_request_id === q.id);
+                const hasBooking = !!(booking && hasQuote && booking.quote_id === quote?.id);
 
                 const statusLabel = getTravellerStatusLabel(hasQuote, hasBooking);
 
@@ -961,7 +963,7 @@ export default function OperatorsQuotesClient() {
                       <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}>
                         <button
                           type="button"
-                          onClick={() => router.push(`/bookings/${booking.id}`)}
+                          onClick={() => router.push(`/operators/bookings/${booking.id}`)}
                           style={{
                             borderRadius: 999,
                             padding: "4px 10px",
@@ -1046,7 +1048,11 @@ export default function OperatorsQuotesClient() {
                   )}
 
                   <div style={{ fontSize: 11, color: "#6B7280", textAlign: "right" }}>
-                    {loadingQuote ? "Checking for quote…" : quote ? `Current quote: ${quote.currency || "USD"} ${quote.total_price ?? "-"}` : "No quote sent yet for this enquiry."}
+                    {loadingQuote
+                      ? "Checking for quote…"
+                      : quote
+                      ? `Current quote: ${quote.currency || "USD"} ${quote.total_price ?? "-"}`
+                      : "No quote sent yet for this enquiry."}
                   </div>
                 </div>
               </div>

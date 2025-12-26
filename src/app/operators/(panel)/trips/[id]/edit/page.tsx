@@ -1,13 +1,10 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-type OperatorRow = {
-  id: string;
-  company_name: string | null;
-};
+type OperatorRow = { id: string; company_name: string | null; status?: string | null };
 
 type TripRow = {
   id: string;
@@ -52,7 +49,8 @@ const GREEN = "#0B6B3A";
 const RED = "#B91C1C";
 
 const toLines = (arr: string[] | null | undefined) => (arr ?? []).join("\n");
-const fromCsv = (parks: string[] | null) => (parks ?? []).join(", ");
+const fromArr = (parks: string[] | null) => (parks ?? []).join(", ");
+const normalizeOpStatus = (s: any) => String(s || "pending").toLowerCase();
 
 export default function EditTripPage() {
   const router = useRouter();
@@ -66,62 +64,59 @@ export default function EditTripPage() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  /* ───────── Load trip + operator + days ───────── */
+  const canEdit = useMemo(() => {
+    const s = normalizeOpStatus(operator?.status);
+    return s === "approved" || s === "live";
+  }, [operator?.status]);
+
   useEffect(() => {
     if (!tripId) return;
 
-    let isMounted = true;
+    let alive = true;
 
     (async () => {
       setLoading(true);
       setMsg(null);
 
-      // 1) Current user
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError) {
-        console.error("auth error:", userError);
-      }
+      // user
+      const { data: userRes, error: userError } = await supabase.auth.getUser();
+      if (userError) console.error("auth error:", userError);
+      const user = userRes?.user;
 
       if (!user) {
         router.push("/login");
         return;
       }
 
-      // 2) Operator profile
+      // operator
       const { data: op, error: opError } = await supabase
         .from("operators")
-        .select("id, company_name")
+        .select("id, company_name, status")
         .eq("user_id", user.id)
         .maybeSingle();
 
       if (opError || !op) {
+        if (!alive) return;
         console.error("operator load error:", opError);
-        if (!isMounted) return;
         setMsg("❌ You must have an operator profile to edit trips.");
         setLoading(false);
         return;
       }
 
-      if (!isMounted) return;
+      if (!alive) return;
       setOperator(op as OperatorRow);
 
-      // 3) Trip must belong to this operator
+      // trip must belong to operator
       const { data: trip, error: tripError } = await supabase
         .from("trips")
-        .select(
-          "id,title,duration,style,parks,price_from,price_to,overview,description,highlights,includes,excludes,images,hero_url,operator_id"
-        )
+        .select("id,title,duration,style,parks,price_from,price_to,overview,description,highlights,includes,excludes,images,hero_url,operator_id")
         .eq("id", tripId)
-        .eq("operator_id", (op as any).id)
+        .eq("operator_id", op.id)
         .maybeSingle();
 
       if (tripError || !trip) {
+        if (!alive) return;
         console.error("trip load error:", tripError);
-        if (!isMounted) return;
         setMsg("❌ Trip not found or not owned by your operator.");
         setLoading(false);
         return;
@@ -130,18 +125,13 @@ export default function EditTripPage() {
       const t = trip as TripRow;
 
       const imgs = t.images ?? [];
-      const [hero, ex1, ex2, ex3] = [
-        t.hero_url || imgs[0] || "",
-        imgs[1] || "",
-        imgs[2] || "",
-        imgs[3] || "",
-      ];
+      const [hero, ex1, ex2, ex3] = [t.hero_url || imgs[0] || "", imgs[1] || "", imgs[2] || "", imgs[3] || ""];
 
       const initialForm: TripForm = {
         title: t.title,
         duration: t.duration ? String(t.duration) : "",
         style: (t.style ?? "balanced") as TripForm["style"],
-        parksCsv: fromCsv(t.parks),
+        parksCsv: fromArr(t.parks),
         priceFrom: t.price_from != null ? String(t.price_from) : "",
         priceTo: t.price_to != null ? String(t.price_to) : "",
         overview: t.overview ?? "",
@@ -155,38 +145,29 @@ export default function EditTripPage() {
         extra3: ex3,
       };
 
-      if (!isMounted) return;
+      if (!alive) return;
       setForm(initialForm);
 
-      // 4) Load trip_days
+      // days
       const { data: dayRows, error: dayErr } = await supabase
         .from("trip_days")
         .select("id,day_index,title,desc")
         .eq("trip_id", tripId)
         .order("day_index", { ascending: true });
 
-      if (dayErr) {
-        console.error("trip_days load error:", dayErr);
-      }
+      if (dayErr) console.error("trip_days load error:", dayErr);
 
-      if (!isMounted) return;
-      setDays(
-        (dayRows || []).map((d: any) => ({
-          id: d.id,
-          title: d.title ?? "",
-          desc: d.desc ?? "",
-        }))
-      );
+      if (!alive) return;
+      setDays((dayRows || []).map((d: any) => ({ id: d.id, title: d.title ?? "", desc: d.desc ?? "" })));
 
       setLoading(false);
     })();
 
     return () => {
-      isMounted = false;
+      alive = false;
     };
   }, [router, tripId]);
 
-  /* ───────── Helpers ───────── */
   const onChange = (field: keyof TripForm, value: string) => {
     setForm((f) => (f ? { ...f, [field]: value } : f));
   };
@@ -197,24 +178,20 @@ export default function EditTripPage() {
       .map((x) => x.trim())
       .filter(Boolean);
 
-  const addDay = () => {
-    setDays((d) => [...d, { title: "", desc: "" }]);
-  };
-
+  const addDay = () => setDays((d) => [...d, { title: "", desc: "" }]);
   const updateDay = (index: number, key: keyof DayBlock, value: string) => {
-    setDays((prev) =>
-      prev.map((d, i) => (i === index ? { ...d, [key]: value } : d))
-    );
+    setDays((prev) => prev.map((d, i) => (i === index ? { ...d, [key]: value } : d)));
   };
+  const removeDay = (index: number) => setDays((prev) => prev.filter((_, i) => i !== index));
 
-  const removeDay = (index: number) => {
-    setDays((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  /* ───────── Save changes ───────── */
   const handleSubmit: React.FormEventHandler<HTMLFormElement> = async (e) => {
     e.preventDefault();
     if (!form || !operator || !tripId) return;
+
+    if (!canEdit) {
+      setMsg("❌ Your operator account is pending approval. You can’t edit/publish trips yet.");
+      return;
+    }
 
     setSaving(true);
     setMsg(null);
@@ -228,12 +205,7 @@ export default function EditTripPage() {
     const includesArr = parseList(form.includesText);
     const excludesArr = parseList(form.excludesText);
 
-    const imagesArray = [
-      form.heroUrl.trim(),
-      form.extra1.trim(),
-      form.extra2.trim(),
-      form.extra3.trim(),
-    ].filter(Boolean);
+    const imagesArray = [form.heroUrl.trim(), form.extra1.trim(), form.extra2.trim(), form.extra3.trim()].filter(Boolean);
 
     try {
       const { error: updateError } = await supabase
@@ -258,29 +230,18 @@ export default function EditTripPage() {
 
       if (updateError) {
         console.error("trip update error:", updateError);
-        setMsg(
-          "❌ Failed to update trip. Please make sure style/status match DB enums."
-        );
+        setMsg("❌ Failed to update trip. Please make sure fields match DB enums.");
         setSaving(false);
         return;
       }
 
-      // Replace trip_days with current list
+      // Replace trip_days
       const cleanedDays = days
-        .map((d) => ({
-          title: d.title.trim(),
-          desc: d.desc.trim(),
-        }))
+        .map((d) => ({ title: d.title.trim(), desc: d.desc.trim() }))
         .filter((d) => d.title || d.desc);
 
-      const { error: delErr } = await supabase
-        .from("trip_days")
-        .delete()
-        .eq("trip_id", tripId);
-
-      if (delErr) {
-        console.error("trip_days delete error:", delErr);
-      }
+      const { error: delErr } = await supabase.from("trip_days").delete().eq("trip_id", tripId);
+      if (delErr) console.error("trip_days delete error:", delErr);
 
       if (cleanedDays.length) {
         const rows = cleanedDays.map((d, idx) => ({
@@ -291,15 +252,12 @@ export default function EditTripPage() {
         }));
 
         const { error: insErr } = await supabase.from("trip_days").insert(rows);
-
-        if (insErr) {
-          console.error("trip_days insert error:", insErr);
-        }
+        if (insErr) console.error("trip_days insert error:", insErr);
       }
 
       setMsg("✅ Trip updated successfully.");
       setSaving(false);
-      router.push("/trips");
+      router.push(`/trips/${tripId}`);
     } catch (err) {
       console.error("trip update exception:", err);
       setMsg("❌ Unexpected error while saving changes.");
@@ -307,12 +265,9 @@ export default function EditTripPage() {
     }
   };
 
-  /* ───────── Delete trip ───────── */
   const handleDelete = async () => {
     if (!tripId || !operator) return;
-    const ok = window.confirm(
-      "Are you sure you want to delete this trip? This cannot be undone."
-    );
+    const ok = window.confirm("Are you sure you want to delete this trip? This cannot be undone.");
     if (!ok) return;
 
     setSaving(true);
@@ -321,11 +276,7 @@ export default function EditTripPage() {
     try {
       await supabase.from("trip_days").delete().eq("trip_id", tripId);
 
-      const { error } = await supabase
-        .from("trips")
-        .delete()
-        .eq("id", tripId)
-        .eq("operator_id", operator.id);
+      const { error } = await supabase.from("trips").delete().eq("id", tripId).eq("operator_id", operator.id);
 
       if (error) {
         console.error("delete trip error:", error);
@@ -343,20 +294,9 @@ export default function EditTripPage() {
     }
   };
 
-  /* ───────── Render ───────── */
   if (loading || !form) {
     return (
-      <main
-        style={{
-          backgroundColor: BG,
-          minHeight: "80vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 14,
-          color: "#6B7280",
-        }}
-      >
+      <main style={{ backgroundColor: BG, minHeight: "80vh", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#6B7280" }}>
         Loading trip…
       </main>
     );
@@ -364,14 +304,7 @@ export default function EditTripPage() {
 
   return (
     <div style={{ backgroundColor: BG, minHeight: "100vh" }}>
-      <main
-        style={{
-          maxWidth: 1180,
-          margin: "0 auto",
-          padding: "24px 16px 64px",
-        }}
-      >
-        {/* HEADER */}
+      <main style={{ maxWidth: 1180, margin: "0 auto", padding: "24px 16px 64px" }}>
         <section
           style={{
             borderRadius: 24,
@@ -385,42 +318,37 @@ export default function EditTripPage() {
           }}
         >
           <div>
-            <p
-              style={{
-                margin: 0,
-                fontSize: 11,
-                letterSpacing: "0.16em",
-                textTransform: "uppercase",
-                color: "#6B7280",
-              }}
-            >
+            <p style={{ margin: 0, fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", color: "#6B7280" }}>
               Operator / Edit trip
             </p>
-            <h1
-              style={{
-                margin: 0,
-                marginTop: 4,
-                fontSize: 24,
-                fontWeight: 800,
-                color: GREEN,
-              }}
-            >
+            <h1 style={{ margin: 0, marginTop: 4, fontSize: 24, fontWeight: 800, color: GREEN }}>
               Edit safari itinerary
             </h1>
-            <p
-              style={{
-                margin: 0,
-                marginTop: 4,
-                fontSize: 13,
-                color: "#4B5563",
-              }}
-            >
-              Update details, images or day-by-day itinerary. Changes are saved
-              immediately for travellers.
+            <p style={{ margin: 0, marginTop: 4, fontSize: 13, color: "#4B5563" }}>
+              Update details, images or day-by-day itinerary.
             </p>
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <button
+              type="button"
+              onClick={() => router.push(`/trips/${tripId}`)}
+              disabled={saving}
+              style={{
+                alignSelf: "flex-end",
+                padding: "8px 14px",
+                borderRadius: 999,
+                border: "1px solid #D1D5DB",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: saving ? "wait" : "pointer",
+                backgroundColor: "#FFFFFF",
+                color: "#111827",
+              }}
+            >
+              ← Back to trip
+            </button>
+
             <button
               type="button"
               onClick={handleDelete}
@@ -451,16 +379,13 @@ export default function EditTripPage() {
               fontSize: 13,
               backgroundColor: msg.startsWith("❌") ? "#FEE2E2" : "#ECFDF3",
               color: msg.startsWith("❌") ? RED : "#166534",
-              border: `1px solid ${
-                msg.startsWith("❌") ? "#FECACA" : "#A7F3D0"
-              }`,
+              border: `1px solid ${msg.startsWith("❌") ? "#FECACA" : "#A7F3D0"}`,
             }}
           >
             {msg}
           </div>
         )}
 
-        {/* FORM */}
         <form
           onSubmit={handleSubmit}
           style={{
@@ -476,57 +401,27 @@ export default function EditTripPage() {
         >
           {/* LEFT */}
           <div style={{ display: "grid", gap: 14 }}>
-            {/* Basic info */}
             <section>
-              <h2
-                style={{
-                  margin: 0,
-                  fontSize: 16,
-                  fontWeight: 700,
-                  color: "#111827",
-                  marginBottom: 8,
-                }}
-              >
-                Basic trip details
-              </h2>
+              <h2 style={h2Style}>Basic trip details</h2>
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns:
-                    "minmax(0,2.5fr) minmax(0,1fr) minmax(0,1.2fr)",
+                  gridTemplateColumns: "minmax(0,2.5fr) minmax(0,1fr) minmax(0,1.2fr)",
                   gap: 8,
                   marginBottom: 8,
                 }}
               >
                 <div>
                   <label style={labelStyle}>Trip title*</label>
-                  <input
-                    value={form.title}
-                    onChange={(e) => onChange("title", e.target.value)}
-                    required
-                    style={inputStyle}
-                  />
+                  <input value={form.title} onChange={(e) => onChange("title", e.target.value)} required style={inputStyle} />
                 </div>
                 <div>
                   <label style={labelStyle}>Duration (days)*</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={form.duration}
-                    onChange={(e) => onChange("duration", e.target.value)}
-                    required
-                    style={inputStyle}
-                  />
+                  <input type="number" min={1} value={form.duration} onChange={(e) => onChange("duration", e.target.value)} required style={inputStyle} />
                 </div>
                 <div>
                   <label style={labelStyle}>Style*</label>
-                  <select
-                    value={form.style}
-                    onChange={(e) =>
-                      onChange("style", e.target.value as TripForm["style"])
-                    }
-                    style={inputStyle}
-                  >
+                  <select value={form.style} onChange={(e) => onChange("style", e.target.value as TripForm["style"])} style={inputStyle}>
                     <option value="value">Value</option>
                     <option value="balanced">Balanced</option>
                     <option value="premium">Premium</option>
@@ -534,178 +429,69 @@ export default function EditTripPage() {
                 </div>
               </div>
 
-              <label style={labelStyle}>
-                Parks & regions (comma or line separated)
-              </label>
-              <textarea
-                value={form.parksCsv}
-                onChange={(e) => onChange("parksCsv", e.target.value)}
-                rows={2}
-                style={textareaStyle}
-              />
+              <label style={labelStyle}>Parks & regions (comma or line separated)</label>
+              <textarea value={form.parksCsv} onChange={(e) => onChange("parksCsv", e.target.value)} rows={2} style={textareaStyle} />
             </section>
 
-            {/* Pricing */}
             <section>
               <h2 style={h2Style}>Pricing</h2>
               <div style={{ display: "flex", gap: 10 }}>
                 <div style={{ flex: 1 }}>
                   <label style={labelStyle}>From (USD)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.priceFrom}
-                    onChange={(e) => onChange("priceFrom", e.target.value)}
-                    style={inputStyle}
-                  />
+                  <input type="number" min={0} value={form.priceFrom} onChange={(e) => onChange("priceFrom", e.target.value)} style={inputStyle} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Up to (USD)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.priceTo}
-                    onChange={(e) => onChange("priceTo", e.target.value)}
-                    style={inputStyle}
-                  />
+                  <input type="number" min={0} value={form.priceTo} onChange={(e) => onChange("priceTo", e.target.value)} style={inputStyle} />
                 </div>
               </div>
             </section>
 
-            {/* Overview & description */}
             <section>
               <h2 style={h2Style}>Overview</h2>
-              <textarea
-                value={form.overview}
-                onChange={(e) => onChange("overview", e.target.value)}
-                rows={4}
-                style={textareaStyle}
-              />
-              <label style={{ ...labelStyle, marginTop: 6 }}>
-                Detailed description
-              </label>
-              <textarea
-                value={form.description}
-                onChange={(e) => onChange("description", e.target.value)}
-                rows={4}
-                style={textareaStyle}
-              />
+              <textarea value={form.overview} onChange={(e) => onChange("overview", e.target.value)} rows={4} style={textareaStyle} />
+              <label style={{ ...labelStyle, marginTop: 6 }}>Detailed description</label>
+              <textarea value={form.description} onChange={(e) => onChange("description", e.target.value)} rows={4} style={textareaStyle} />
             </section>
 
-            {/* Highlights, includes, excludes */}
             <section>
               <h2 style={h2Style}>Highlights & What&apos;s Included</h2>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    "minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr)",
-                  gap: 10,
-                }}
-              >
+              <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr)", gap: 10 }}>
                 <div>
                   <label style={labelStyle}>Trip highlights</label>
-                  <textarea
-                    value={form.highlightsText}
-                    onChange={(e) =>
-                      onChange("highlightsText", e.target.value)
-                    }
-                    rows={5}
-                    style={textareaStyle}
-                  />
+                  <textarea value={form.highlightsText} onChange={(e) => onChange("highlightsText", e.target.value)} rows={5} style={textareaStyle} />
                 </div>
                 <div>
                   <label style={labelStyle}>Included</label>
-                  <textarea
-                    value={form.includesText}
-                    onChange={(e) =>
-                      onChange("includesText", e.target.value)
-                    }
-                    rows={5}
-                    style={textareaStyle}
-                  />
+                  <textarea value={form.includesText} onChange={(e) => onChange("includesText", e.target.value)} rows={5} style={textareaStyle} />
                 </div>
                 <div>
                   <label style={labelStyle}>Excluded</label>
-                  <textarea
-                    value={form.excludesText}
-                    onChange={(e) =>
-                      onChange("excludesText", e.target.value)
-                    }
-                    rows={5}
-                    style={textareaStyle}
-                  />
+                  <textarea value={form.excludesText} onChange={(e) => onChange("excludesText", e.target.value)} rows={5} style={textareaStyle} />
                 </div>
               </div>
             </section>
 
-            {/* Days */}
             <section>
               <h2 style={h2Style}>Day-by-day itinerary</h2>
               <div style={{ display: "grid", gap: 8 }}>
                 {days.map((d, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      border: "1px solid #E5E7EB",
-                      borderRadius: 10,
-                      padding: 8,
-                      background: "#F9FAFB",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginBottom: 4,
-                      }}
-                    >
+                  <div key={idx} style={{ border: "1px solid #E5E7EB", borderRadius: 10, padding: 8, background: "#F9FAFB" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                       <strong style={{ fontSize: 13 }}>Day {idx + 1}</strong>
-                      <button
-                        type="button"
-                        onClick={() => removeDay(idx)}
-                        style={{
-                          border: "none",
-                          background: "transparent",
-                          fontSize: 11,
-                          color: RED,
-                          cursor: "pointer",
-                        }}
-                      >
+                      <button type="button" onClick={() => removeDay(idx)} style={{ border: "none", background: "transparent", fontSize: 11, color: RED, cursor: "pointer" }}>
                         Remove
                       </button>
                     </div>
-                    <input
-                      style={{ ...inputStyle, marginBottom: 4 }}
-                      value={d.title}
-                      onChange={(e) =>
-                        updateDay(idx, "title", e.target.value)
-                      }
-                    />
-                    <textarea
-                      rows={3}
-                      style={textareaStyle}
-                      value={d.desc}
-                      onChange={(e) =>
-                        updateDay(idx, "desc", e.target.value)
-                      }
-                    />
+                    <input style={{ ...inputStyle, marginBottom: 4 }} value={d.title} onChange={(e) => updateDay(idx, "title", e.target.value)} />
+                    <textarea rows={3} style={textareaStyle} value={d.desc} onChange={(e) => updateDay(idx, "desc", e.target.value)} />
                   </div>
                 ))}
               </div>
               <button
                 type="button"
                 onClick={addDay}
-                style={{
-                  marginTop: 8,
-                  borderRadius: 999,
-                  border: "1px dashed #9CA3AF",
-                  padding: "6px 10px",
-                  fontSize: 12,
-                  cursor: "pointer",
-                  background: "#FFFFFF",
-                }}
+                style={{ marginTop: 8, borderRadius: 999, border: "1px dashed #9CA3AF", padding: "6px 10px", fontSize: 12, cursor: "pointer", background: "#FFFFFF" }}
               >
                 + Add day
               </button>
@@ -714,35 +500,16 @@ export default function EditTripPage() {
 
           {/* RIGHT */}
           <div style={{ display: "grid", gap: 14 }}>
-            {/* Images */}
             <section>
               <h2 style={h2Style}>Trip images</h2>
               <label style={labelStyle}>Featured image URL*</label>
-              <input
-                value={form.heroUrl}
-                onChange={(e) => onChange("heroUrl", e.target.value)}
-                required
-                style={{ ...inputStyle, marginBottom: 8 }}
-              />
+              <input value={form.heroUrl} onChange={(e) => onChange("heroUrl", e.target.value)} required style={{ ...inputStyle, marginBottom: 8 }} />
               <label style={labelStyle}>Extra photos</label>
-              <input
-                value={form.extra1}
-                onChange={(e) => onChange("extra1", e.target.value)}
-                style={{ ...inputStyle, marginTop: 4 }}
-              />
-              <input
-                value={form.extra2}
-                onChange={(e) => onChange("extra2", e.target.value)}
-                style={{ ...inputStyle, marginTop: 4 }}
-              />
-              <input
-                value={form.extra3}
-                onChange={(e) => onChange("extra3", e.target.value)}
-                style={{ ...inputStyle, marginTop: 4 }}
-              />
+              <input value={form.extra1} onChange={(e) => onChange("extra1", e.target.value)} style={{ ...inputStyle, marginTop: 4 }} />
+              <input value={form.extra2} onChange={(e) => onChange("extra2", e.target.value)} style={{ ...inputStyle, marginTop: 4 }} />
+              <input value={form.extra3} onChange={(e) => onChange("extra3", e.target.value)} style={{ ...inputStyle, marginTop: 4 }} />
             </section>
 
-            {/* Save */}
             <section>
               <button
                 type="submit"
@@ -763,14 +530,8 @@ export default function EditTripPage() {
               >
                 {saving ? "Saving changes…" : "Save changes"}
               </button>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 11,
-                  color: "#6B7280",
-                }}
-              >
-                Changes apply immediately on the public trip page.
+              <p style={{ margin: 0, fontSize: 11, color: "#6B7280" }}>
+                Changes apply immediately on the operator view.
               </p>
             </section>
           </div>
@@ -780,31 +541,7 @@ export default function EditTripPage() {
   );
 }
 
-/* Small shared styles */
-const labelStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: "#4B5563",
-  display: "block",
-};
-
-const h2Style: React.CSSProperties = {
-  margin: 0,
-  fontSize: 16,
-  fontWeight: 700,
-  color: "#111827",
-  marginBottom: 6,
-};
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  borderRadius: 10,
-  border: "1px solid #D1D5DB",
-  padding: "6px 9px",
-  fontSize: 13,
-  outline: "none",
-};
-
-const textareaStyle: React.CSSProperties = {
-  ...inputStyle,
-  resize: "vertical",
-};
+const labelStyle: React.CSSProperties = { fontSize: 12, color: "#4B5563", display: "block" };
+const h2Style: React.CSSProperties = { margin: 0, fontSize: 16, fontWeight: 700, color: "#111827", marginBottom: 6 };
+const inputStyle: React.CSSProperties = { width: "100%", borderRadius: 10, border: "1px solid #D1D5DB", padding: "6px 9px", fontSize: 13, outline: "none" };
+const textareaStyle: React.CSSProperties = { ...inputStyle, resize: "vertical" };
