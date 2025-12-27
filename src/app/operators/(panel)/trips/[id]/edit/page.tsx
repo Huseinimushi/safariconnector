@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { normalizeItineraryItemTitle } from "@/lib/itinerary";
 
 type OperatorRow = { id: string; company_name: string | null; status?: string | null };
 
@@ -109,7 +110,9 @@ export default function EditTripPage() {
       // trip must belong to operator
       const { data: trip, error: tripError } = await supabase
         .from("trips")
-        .select("id,title,duration,style,parks,price_from,price_to,overview,description,highlights,includes,excludes,images,hero_url,operator_id")
+        .select(
+          "id,title,duration,style,parks,price_from,price_to,overview,description,highlights,includes,excludes,images,hero_url,operator_id"
+        )
         .eq("id", tripId)
         .eq("operator_id", op.id)
         .maybeSingle();
@@ -125,7 +128,12 @@ export default function EditTripPage() {
       const t = trip as TripRow;
 
       const imgs = t.images ?? [];
-      const [hero, ex1, ex2, ex3] = [t.hero_url || imgs[0] || "", imgs[1] || "", imgs[2] || "", imgs[3] || ""];
+      const [hero, ex1, ex2, ex3] = [
+        t.hero_url || imgs[0] || "",
+        imgs[1] || "",
+        imgs[2] || "",
+        imgs[3] || "",
+      ];
 
       const initialForm: TripForm = {
         title: t.title,
@@ -158,7 +166,15 @@ export default function EditTripPage() {
       if (dayErr) console.error("trip_days load error:", dayErr);
 
       if (!alive) return;
-      setDays((dayRows || []).map((d: any) => ({ id: d.id, title: d.title ?? "", desc: d.desc ?? "" })));
+
+      // ✅ normalize titles on load (in case DB already has "Day 1 - ...")
+      setDays(
+        (dayRows || []).map((d: any) => ({
+          id: d.id,
+          title: normalizeItineraryItemTitle(d.title ?? ""),
+          desc: d.desc ?? "",
+        }))
+      );
 
       setLoading(false);
     })();
@@ -205,7 +221,12 @@ export default function EditTripPage() {
     const includesArr = parseList(form.includesText);
     const excludesArr = parseList(form.excludesText);
 
-    const imagesArray = [form.heroUrl.trim(), form.extra1.trim(), form.extra2.trim(), form.extra3.trim()].filter(Boolean);
+    const imagesArray = [
+      form.heroUrl.trim(),
+      form.extra1.trim(),
+      form.extra2.trim(),
+      form.extra3.trim(),
+    ].filter(Boolean);
 
     try {
       const { error: updateError } = await supabase
@@ -237,8 +258,11 @@ export default function EditTripPage() {
 
       // Replace trip_days
       const cleanedDays = days
-        .map((d) => ({ title: d.title.trim(), desc: d.desc.trim() }))
-        .filter((d) => d.title || d.desc);
+        .map((d) => ({
+          title: normalizeItineraryItemTitle(d.title || "").trim(),
+          desc: (d.desc || "").trim(),
+        }))
+        .filter((d) => d.title.length > 0 || d.desc.length > 0);
 
       const { error: delErr } = await supabase.from("trip_days").delete().eq("trip_id", tripId);
       if (delErr) console.error("trip_days delete error:", delErr);
@@ -247,7 +271,8 @@ export default function EditTripPage() {
         const rows = cleanedDays.map((d, idx) => ({
           trip_id: tripId,
           day_index: idx + 1,
-          title: d.title || `Day ${idx + 1}`,
+          // ✅ never auto-inject "Day X" into title (UI already shows Day number)
+          title: d.title || null,
           desc: d.desc || null,
         }));
 
@@ -276,7 +301,11 @@ export default function EditTripPage() {
     try {
       await supabase.from("trip_days").delete().eq("trip_id", tripId);
 
-      const { error } = await supabase.from("trips").delete().eq("id", tripId).eq("operator_id", operator.id);
+      const { error } = await supabase
+        .from("trips")
+        .delete()
+        .eq("id", tripId)
+        .eq("operator_id", operator.id);
 
       if (error) {
         console.error("delete trip error:", error);
@@ -296,7 +325,17 @@ export default function EditTripPage() {
 
   if (loading || !form) {
     return (
-      <main style={{ backgroundColor: BG, minHeight: "80vh", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#6B7280" }}>
+      <main
+        style={{
+          backgroundColor: BG,
+          minHeight: "80vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 14,
+          color: "#6B7280",
+        }}
+      >
         Loading trip…
       </main>
     );
@@ -483,7 +522,12 @@ export default function EditTripPage() {
                         Remove
                       </button>
                     </div>
-                    <input style={{ ...inputStyle, marginBottom: 4 }} value={d.title} onChange={(e) => updateDay(idx, "title", e.target.value)} />
+                    <input
+                      style={{ ...inputStyle, marginBottom: 4 }}
+                      value={d.title}
+                      onChange={(e) => updateDay(idx, "title", e.target.value)}
+                      placeholder="Arrival & transfer, game drive, overnight"
+                    />
                     <textarea rows={3} style={textareaStyle} value={d.desc} onChange={(e) => updateDay(idx, "desc", e.target.value)} />
                   </div>
                 ))}
@@ -491,7 +535,15 @@ export default function EditTripPage() {
               <button
                 type="button"
                 onClick={addDay}
-                style={{ marginTop: 8, borderRadius: 999, border: "1px dashed #9CA3AF", padding: "6px 10px", fontSize: 12, cursor: "pointer", background: "#FFFFFF" }}
+                style={{
+                  marginTop: 8,
+                  borderRadius: 999,
+                  border: "1px dashed #9CA3AF",
+                  padding: "6px 10px",
+                  fontSize: 12,
+                  cursor: "pointer",
+                  background: "#FFFFFF",
+                }}
               >
                 + Add day
               </button>
@@ -530,9 +582,7 @@ export default function EditTripPage() {
               >
                 {saving ? "Saving changes…" : "Save changes"}
               </button>
-              <p style={{ margin: 0, fontSize: 11, color: "#6B7280" }}>
-                Changes apply immediately on the operator view.
-              </p>
+              <p style={{ margin: 0, fontSize: 11, color: "#6B7280" }}>Changes apply immediately on the operator view.</p>
             </section>
           </div>
         </form>

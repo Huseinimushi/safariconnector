@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { normalizeItineraryItemTitle } from "@/lib/itinerary";
 
 type OperatorRow = { id: string; company_name: string | null; status?: string | null };
 
@@ -85,7 +86,9 @@ export default function OperatorTripManagePage() {
 
       const { data: t, error: tErr } = await supabase
         .from("trips")
-        .select("id,title,duration,style,parks,price_from,price_to,overview,description,highlights,includes,excludes,images,hero_url,operator_id,created_at,status")
+        .select(
+          "id,title,duration,style,parks,price_from,price_to,overview,description,highlights,includes,excludes,images,hero_url,operator_id,created_at,status"
+        )
         .eq("id", tripId)
         .eq("operator_id", op.id)
         .maybeSingle();
@@ -108,7 +111,14 @@ export default function OperatorTripManagePage() {
 
       if (!alive) return;
       setTrip(t as TripRow);
-      setDays((dayRows || []) as any);
+
+      // ✅ Defensive: normalize titles on load to avoid "Day 1: Day 1 - ..."
+      const normalizedDays = (dayRows || []).map((d: any) => ({
+        ...(d as DayRow),
+        title: normalizeItineraryItemTitle(d.title ?? ""),
+      })) as DayRow[];
+
+      setDays(normalizedDays);
       setLoading(false);
     })();
 
@@ -119,7 +129,17 @@ export default function OperatorTripManagePage() {
 
   if (loading) {
     return (
-      <main style={{ backgroundColor: BG, minHeight: "80vh", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, color: "#6B7280" }}>
+      <main
+        style={{
+          backgroundColor: BG,
+          minHeight: "80vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 14,
+          color: "#6B7280",
+        }}
+      >
         Loading trip…
       </main>
     );
@@ -127,7 +147,17 @@ export default function OperatorTripManagePage() {
 
   if (!trip) {
     return (
-      <main style={{ backgroundColor: BG, minHeight: "80vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, color: "#B91C1C" }}>
+      <main
+        style={{
+          backgroundColor: BG,
+          minHeight: "80vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 16,
+          color: "#B91C1C",
+        }}
+      >
         {msg || "Trip not found."}
       </main>
     );
@@ -136,7 +166,9 @@ export default function OperatorTripManagePage() {
   const hero = trip.hero_url || trip.images?.[0] || "";
   const priceLine =
     trip.price_from != null
-      ? `From $${trip.price_from.toLocaleString()}${trip.price_to != null ? ` – $${trip.price_to.toLocaleString()}` : ""}`
+      ? `From $${trip.price_from.toLocaleString()}${
+          trip.price_to != null ? ` – $${trip.price_to.toLocaleString()}` : ""
+        }`
       : "Price on request";
 
   return (
@@ -157,7 +189,15 @@ export default function OperatorTripManagePage() {
           }}
         >
           <div>
-            <p style={{ margin: 0, fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", color: "#6B7280" }}>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 11,
+                letterSpacing: "0.16em",
+                textTransform: "uppercase",
+                color: "#6B7280",
+              }}
+            >
               Operator / Trip
             </p>
             <h1 style={{ margin: 0, marginTop: 4, fontSize: 24, fontWeight: 800, color: GREEN }}>
@@ -206,7 +246,17 @@ export default function OperatorTripManagePage() {
         </section>
 
         {msg && (
-          <div style={{ marginBottom: 16, borderRadius: 12, padding: "8px 12px", fontSize: 13, backgroundColor: "#FEF3C7", color: "#92400E", border: "1px solid #FDE68A" }}>
+          <div
+            style={{
+              marginBottom: 16,
+              borderRadius: 12,
+              padding: "8px 12px",
+              fontSize: 13,
+              backgroundColor: "#FEF3C7",
+              color: "#92400E",
+              border: "1px solid #FDE68A",
+            }}
+          >
             {msg}
           </div>
         )}
@@ -214,7 +264,14 @@ export default function OperatorTripManagePage() {
         {/* Content */}
         <section style={{ borderRadius: 24, background: "#FFFFFF", border: "1px solid #E5E7EB", overflow: "hidden" }}>
           {hero ? (
-            <div style={{ height: 240, backgroundImage: `url(${hero})`, backgroundSize: "cover", backgroundPosition: "center" }} />
+            <div
+              style={{
+                height: 240,
+                backgroundImage: `url(${hero})`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+              }}
+            />
           ) : (
             <div style={{ height: 180, display: "flex", alignItems: "center", justifyContent: "center", color: "#6B7280" }}>
               No featured image
@@ -244,14 +301,29 @@ export default function OperatorTripManagePage() {
                   <p style={pStyle}>No day-by-day itinerary saved.</p>
                 ) : (
                   <div style={{ display: "grid", gap: 8 }}>
-                    {days.map((d) => (
-                      <div key={d.id} style={{ border: "1px solid #E5E7EB", borderRadius: 12, padding: 10, background: "#F9FAFB" }}>
-                        <div style={{ fontWeight: 800, color: "#111827", fontSize: 13 }}>
-                          Day {d.day_index}: {d.title || `Day ${d.day_index}`}
+                    {days.map((d) => {
+                      const cleanTitle = normalizeItineraryItemTitle(d.title ?? "");
+                      return (
+                        <div
+                          key={d.id}
+                          style={{
+                            border: "1px solid #E5E7EB",
+                            borderRadius: 12,
+                            padding: 10,
+                            background: "#F9FAFB",
+                          }}
+                        >
+                          <div style={{ fontWeight: 800, color: "#111827", fontSize: 13 }}>
+                            Day {d.day_index}: {cleanTitle || "Itinerary details"}
+                          </div>
+                          {d.desc ? (
+                            <div style={{ marginTop: 4, color: "#374151", fontSize: 13, lineHeight: 1.5 }}>
+                              {d.desc}
+                            </div>
+                          ) : null}
                         </div>
-                        {d.desc ? <div style={{ marginTop: 4, color: "#374151", fontSize: 13, lineHeight: 1.5 }}>{d.desc}</div> : null}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { normalizeItineraryItemTitle } from "@/lib/itinerary";
 
 const BG_SAND = "#F4F3ED";
 const BRAND_GREEN = "#0B6B3A";
@@ -194,11 +195,11 @@ function NewTripPageInner() {
       if (!alive) return;
       setOperator(op);
 
-      // init days
+      // init days (✅ do NOT prefill with "Day X -")
       setDays((prev) => {
         if (prev.length > 0) return prev;
-        return Array.from({ length: emptyForm.duration }, (_, i) => ({
-          title: `Day ${i + 1} - `,
+        return Array.from({ length: emptyForm.duration }, () => ({
+          title: "",
           desc: "",
         }));
       });
@@ -212,7 +213,7 @@ function NewTripPageInner() {
     };
   }, [router, searchParams]);
 
-  // Sync day rows with duration
+  // Sync day rows with duration (✅ keep titles, only add empty rows)
   useEffect(() => {
     setDays((prev) => {
       const n = form.duration || 0;
@@ -220,10 +221,7 @@ function NewTripPageInner() {
       let next = [...prev];
 
       if (next.length < n) {
-        while (next.length < n) {
-          const idx = next.length + 1;
-          next.push({ title: `Day ${idx} - `, desc: "" });
-        }
+        while (next.length < n) next.push({ title: "", desc: "" });
       } else if (next.length > n) {
         next = next.slice(0, n);
       }
@@ -284,7 +282,7 @@ function NewTripPageInner() {
     return Number.isFinite(n) && n > 0 ? n : null;
   };
 
-  // AI: apply plan
+  // AI: apply plan (✅ strip "Day X" from AI titles)
   const handleApplyAiPlan = () => {
     if (!aiData) return;
 
@@ -314,14 +312,14 @@ function NewTripPageInner() {
     if (Array.isArray(plan.days) && plan.days.length > 0) {
       setDays(
         plan.days.map((d, i) => ({
-          title: d.title || `Day ${d.day || i + 1}`,
+          title: normalizeItineraryItemTitle(d.title || ""),
           desc: d.description || "",
         }))
       );
     }
   };
 
-  // Submit
+  // Submit (✅ normalize before saving to avoid "Day 1: Day 1 - ...")
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!operator) return;
@@ -380,15 +378,18 @@ function NewTripPageInner() {
 
       const tripId = (data as any).id as string;
 
-      // trip_days
+      // trip_days (✅ strip Day prefix)
       const dayPayload = days
-        .map((d, idx) => ({
-          trip_id: tripId,
-          day_index: idx + 1,
-          title: d.title.trim() || `Day ${idx + 1}`,
-          desc: d.desc.trim() || null,
-        }))
-        .filter((d) => d.title || d.desc);
+        .map((d, idx) => {
+          const cleanTitle = normalizeItineraryItemTitle(d.title || "");
+          return {
+            trip_id: tripId,
+            day_index: idx + 1,
+            title: cleanTitle || null,
+            desc: d.desc.trim() || null,
+          };
+        })
+        .filter((d) => (d.title && d.title.trim().length > 0) || (d.desc && d.desc.trim().length > 0));
 
       if (dayPayload.length > 0) {
         const { error: daysError } = await supabase.from("trip_days").insert(dayPayload);
@@ -480,7 +481,15 @@ function NewTripPageInner() {
           }}
         >
           <div>
-            <p style={{ margin: 0, fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", color: "#6B7280" }}>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 11,
+                letterSpacing: "0.16em",
+                textTransform: "uppercase",
+                color: "#6B7280",
+              }}
+            >
               New trip
             </p>
             <h1 style={{ margin: 0, marginTop: 4, fontSize: 24, fontWeight: 800, color: BRAND_GREEN }}>
@@ -715,11 +724,14 @@ function NewTripPageInner() {
               <div style={{ display: "grid", gap: 8, maxHeight: 380, overflowY: "auto", paddingRight: 4 }}>
                 {days.map((d, idx) => (
                   <div key={idx} style={{ borderRadius: 10, border: "1px solid #E5E7EB", padding: 8, backgroundColor: "#F9FAFB" }}>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#111827", marginBottom: 6 }}>
+                      Day {idx + 1}
+                    </div>
                     <input
                       type="text"
                       value={d.title}
                       onChange={(e) => handleDayChange(idx, "title", e.target.value)}
-                      placeholder={`Day ${idx + 1} - Arrival & transfer`}
+                      placeholder="Arrival & transfer, game drive, overnight"
                       style={{ ...inputStyle, marginBottom: 6 }}
                     />
                     <textarea
