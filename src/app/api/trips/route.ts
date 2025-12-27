@@ -34,17 +34,17 @@ export async function GET(req: NextRequest) {
     let query = supabase
       .from("trips")
       .select(
-        "id,title,description,duration,parks,style,price_from,price_to,images,country,rating,reviews,best_months,overview,highlights,includes,excludes,status,operator_id"
+        "id,title,description,duration,parks,style,price_from,price_to,images,rating,reviews,best_months,overview,highlights,includes,excludes,status,operator_id,created_at"
       )
       .eq("status", "published")
       .order("created_at", { ascending: false });
 
     if (q) {
       const escaped = q.replace(/,/g, "");
-      query = query.or(
-        `title.ilike.%${escaped}%,description.ilike.%${escaped}%,country.ilike.%${escaped}%`
-      );
+      // ✅ removed country search since column doesn't exist
+      query = query.or(`title.ilike.%${escaped}%,description.ilike.%${escaped}%`);
     }
+
     if (minDays !== null && Number.isFinite(minDays)) query = query.gte("duration", minDays);
     if (maxDays !== null && Number.isFinite(maxDays)) query = query.lte("duration", maxDays);
     if (style) query = query.eq("style", style);
@@ -52,22 +52,13 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query;
 
     if (error) {
-      console.error("GET /api/trips supabase error:", error);
-      return NextResponse.json(
-        {
-          error: "Failed to load trips",
-          details: error, // ✅ muhimu: utaona code/message/hint
-        },
-        { status: 500 }
-      );
+      console.error("GET /api/trips error:", error);
+      return NextResponse.json({ error: "Failed to load trips" }, { status: 500 });
     }
 
     return NextResponse.json({ trips: data ?? [] }, { status: 200 });
   } catch (e: any) {
     console.error("GET /api/trips unexpected:", e);
-    return NextResponse.json(
-      { error: "Unexpected error", details: e?.message || String(e) },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: e?.message || "Unexpected error" }, { status: 500 });
   }
 }
