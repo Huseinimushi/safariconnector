@@ -18,8 +18,7 @@ type TripRow = {
   price_to?: number | null;
   hero_url?: string | null;
   created_at?: string | null;
-  // style is optional (view may not have it)
-  style?: string | null;
+  style?: string | null; // optional
 };
 
 type OperatorRow = {
@@ -49,6 +48,9 @@ const BRAND = {
   muted: "#6B7280",
   border: "#E5E7EB",
 };
+
+// LOGIN URL (absolute)
+const TRAVELLER_LOGIN_URL = "https://safariconnector.com/login/traveller";
 
 // Helper: remote URL?
 const isRemoteUrl = (src: string | null | undefined) =>
@@ -143,9 +145,10 @@ async function loadHomepageData() {
   ]);
 
   const operators: OperatorRow[] = (opsRes.data as any) ?? [];
-  const approvedOperatorsCount: number = (opsCountRes as any)?.count ?? operators.length;
+  const approvedOperatorsCount: number =
+    (opsCountRes as any)?.count ?? operators.length;
 
-  return { trips, operators, approvedOperatorsCount, tripsViewError: tripsViewRes.error };
+  return { trips, operators, approvedOperatorsCount };
 }
 
 export default async function HomePage() {
@@ -174,7 +177,9 @@ export default async function HomePage() {
     .map(([name]) => name);
 
   // Duplicate for seamless loop
-  const carouselItems = popularDestinations.length ? [...popularDestinations, ...popularDestinations] : [];
+  const carouselItems = popularDestinations.length
+    ? [...popularDestinations, ...popularDestinations]
+    : [];
 
   const stats = {
     trips: trips.length,
@@ -184,7 +189,9 @@ export default async function HomePage() {
 
   const heroBg = "/home/hero.jpg";
   const liveTripTitle =
-    trips.length > 0 ? trips[Math.floor(Math.random() * trips.length)].title : "tailor-made safaris";
+    trips.length > 0
+      ? trips[Math.floor(Math.random() * trips.length)].title
+      : "tailor-made safaris";
 
   return (
     <main style={{ background: BRAND.sand, minHeight: "100vh" }}>
@@ -194,7 +201,13 @@ export default async function HomePage() {
       <section style={{ position: "relative", overflow: "hidden" }}>
         {/* bg */}
         <div style={{ position: "absolute", inset: 0 }}>
-          <Image src={heroBg} alt="Safari Connector" fill priority style={{ objectFit: "cover" }} />
+          <Image
+            src={heroBg}
+            alt="Safari Connector"
+            fill
+            priority
+            style={{ objectFit: "cover" }}
+          />
           <div
             style={{
               position: "absolute",
@@ -205,11 +218,39 @@ export default async function HomePage() {
           />
         </div>
 
-        <div style={{ position: "relative", maxWidth: 1180, margin: "0 auto", padding: "34px 16px 18px" }}>
+        <div
+          style={{
+            position: "relative",
+            maxWidth: 1180,
+            margin: "0 auto",
+            padding: "34px 16px 18px",
+          }}
+        >
           {/* Pills */}
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <Badge style={{ background: "rgba(255,255,255,.90)", color: BRAND.green, border: "1px solid rgba(255,255,255,.65)" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                gap: 10,
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              <Badge
+                style={{
+                  background: "rgba(255,255,255,.90)",
+                  color: BRAND.green,
+                  border: "1px solid rgba(255,255,255,.65)",
+                }}
+              >
                 Tanzania-born marketplace
               </Badge>
 
@@ -225,12 +266,19 @@ export default async function HomePage() {
                   backdropFilter: "blur(8px)",
                 }}
               >
-                Travelers are exploring: <span style={{ fontWeight: 950 }}>{clampText(liveTripTitle, 44)}</span>
+                Travelers are exploring:{" "}
+                <span style={{ fontWeight: 950 }}>
+                  {clampText(liveTripTitle, 44)}
+                </span>
               </div>
             </div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <Link href="/login" style={{ textDecoration: "none" }}>
+              {/* ✅ Login goes to main domain traveller login */}
+              <a
+                href={TRAVELLER_LOGIN_URL}
+                style={{ textDecoration: "none" }}
+              >
                 <Button
                   variant="outline"
                   style={{
@@ -243,7 +291,8 @@ export default async function HomePage() {
                 >
                   Login
                 </Button>
-              </Link>
+              </a>
+
               <Link href="/plan" style={{ textDecoration: "none" }}>
                 <Button
                   style={{
@@ -290,8 +339,18 @@ export default async function HomePage() {
                 transparent quotes.
               </h1>
 
-              <p style={{ marginTop: 12, marginBottom: 0, color: "rgba(255,255,255,.88)", fontSize: 16, maxWidth: 680, lineHeight: 1.55 }}>
-                Start with AI or browse itineraries. Request quotes from vetted operators across Tanzania and beyond.
+              <p
+                style={{
+                  marginTop: 12,
+                  marginBottom: 0,
+                  color: "rgba(255,255,255,.88)",
+                  fontSize: 16,
+                  maxWidth: 680,
+                  lineHeight: 1.55,
+                }}
+              >
+                Start with AI or browse itineraries. Request quotes from vetted
+                operators across Tanzania and beyond.
               </p>
 
               {/* Search bar (visual like mockup) */}
@@ -339,26 +398,32 @@ export default async function HomePage() {
 
               {/* Quick chips */}
               <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {["Serengeti", "Ngorongoro", "Zanzibar", "Kilimanjaro"].map((k) => (
-                  <Link key={k} href={`/trips?park=${encodeURIComponent(k)}`} style={{ textDecoration: "none" }}>
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        padding: "7px 12px",
-                        borderRadius: 999,
-                        background: "rgba(15,23,42,.42)",
-                        border: "1px solid rgba(255,255,255,.18)",
-                        color: "rgba(255,255,255,.92)",
-                        fontSize: 12,
-                        fontWeight: 900,
-                        backdropFilter: "blur(10px)",
-                      }}
+                {["Serengeti", "Ngorongoro", "Zanzibar", "Kilimanjaro"].map(
+                  (k) => (
+                    <Link
+                      key={k}
+                      href={`/trips?park=${encodeURIComponent(k)}`}
+                      style={{ textDecoration: "none" }}
                     >
-                      {k}
-                    </span>
-                  </Link>
-                ))}
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          padding: "7px 12px",
+                          borderRadius: 999,
+                          background: "rgba(15,23,42,.42)",
+                          border: "1px solid rgba(255,255,255,.18)",
+                          color: "rgba(255,255,255,.92)",
+                          fontSize: 12,
+                          fontWeight: 900,
+                          backdropFilter: "blur(10px)",
+                        }}
+                      >
+                        {k}
+                      </span>
+                    </Link>
+                  )
+                )}
 
                 <Link href="/plan" style={{ textDecoration: "none" }}>
                   <span
@@ -393,9 +458,18 @@ export default async function HomePage() {
                 color: "rgba(255,255,255,.92)",
               }}
             >
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 1fr",
+                  gap: 10,
+                }}
+              >
                 <Stat label="Trips" value={`${stats.trips}+`} />
-                <Stat label="Vetted operators" value={`${stats.operators}+`} />
+                <Stat
+                  label="Vetted operators"
+                  value={`${stats.operators}+`}
+                />
                 <Stat label="Parks & regions" value={`${stats.parks}+`} />
               </div>
             </div>
@@ -404,15 +478,29 @@ export default async function HomePage() {
       </section>
 
       {/* BODY */}
-      <div style={{ maxWidth: 1180, margin: "0 auto", padding: "26px 16px 64px" }}>
+      <div
+        style={{
+          maxWidth: 1180,
+          margin: "0 auto",
+          padding: "26px 16px 64px",
+        }}
+      >
         {/* Popular destinations: one-line carousel */}
         {popularDestinations.length > 0 && (
           <section style={{ marginTop: 6 }}>
-            <HeaderRow title="Popular destinations" subtitle="Based on real trips published on Safari Connector." href="/trips" />
+            <HeaderRow
+              title="Popular destinations"
+              subtitle="Based on real trips published on Safari Connector."
+              href="/trips"
+            />
             <div className="sc-carousel">
               <div className="sc-track">
                 {carouselItems.map((name, idx) => (
-                  <DestinationCard key={`${name}-${idx}`} name={name} img={DEST_IMG[name]} />
+                  <DestinationCard
+                    key={`${name}-${idx}`}
+                    name={name}
+                    img={DEST_IMG[name]}
+                  />
                 ))}
               </div>
             </div>
@@ -421,11 +509,22 @@ export default async function HomePage() {
 
         {/* Featured trips */}
         <section style={{ marginTop: 26 }}>
-          <HeaderRow title="Featured trips" subtitle="Curated itineraries you can still customize with your operator." href="/trips" />
+          <HeaderRow
+            title="Featured trips"
+            subtitle="Curated itineraries you can still customize with your operator."
+            href="/trips"
+          />
           {trips.length === 0 ? (
             <EmptyCard text="No trips published yet. Check back soon." />
           ) : (
-            <div className="sc-grid-3" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14 }}>
+            <div
+              className="sc-grid-3"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: 14,
+              }}
+            >
               {trips.slice(0, 6).map((t, i) => (
                 <TripCard key={t.id} trip={t} highlight={i === 0} />
               ))}
@@ -436,8 +535,19 @@ export default async function HomePage() {
         {/* Top safari operators */}
         {operators.length > 0 && (
           <section style={{ marginTop: 28 }}>
-            <HeaderRow title="Top safari operators" subtitle="Vetted local partners you can trust." href="/operators" />
-            <div className="sc-grid-3" style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 14 }}>
+            <HeaderRow
+              title="Top safari operators"
+              subtitle="Vetted local partners you can trust."
+              href="/operators"
+            />
+            <div
+              className="sc-grid-3"
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                gap: 14,
+              }}
+            >
               {operators.slice(0, 6).map((op) => (
                 <OperatorCard key={op.id} op={op} />
               ))}
@@ -451,14 +561,52 @@ export default async function HomePage() {
 
 /* ───────────────── Components ───────────────── */
 
-function HeaderRow({ title, subtitle, href }: { title: string; subtitle?: string; href: string }) {
+function HeaderRow({
+  title,
+  subtitle,
+  href,
+}: {
+  title: string;
+  subtitle?: string;
+  href: string;
+}) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 16, marginBottom: 10 }}>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "baseline",
+        gap: 16,
+        marginBottom: 10,
+      }}
+    >
       <div>
-        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 950, color: BRAND.ink }}>{title}</h2>
-        {subtitle ? <p style={{ margin: "5px 0 0", fontSize: 13, color: BRAND.muted }}>{subtitle}</p> : null}
+        <h2
+          style={{
+            margin: 0,
+            fontSize: 22,
+            fontWeight: 950,
+            color: BRAND.ink,
+          }}
+        >
+          {title}
+        </h2>
+        {subtitle ? (
+          <p style={{ margin: "5px 0 0", fontSize: 13, color: BRAND.muted }}>
+            {subtitle}
+          </p>
+        ) : null}
       </div>
-      <Link href={href} style={{ color: BRAND.green2, fontWeight: 900, fontSize: 14, textDecoration: "none", whiteSpace: "nowrap" }}>
+      <Link
+        href={href}
+        style={{
+          color: BRAND.green2,
+          fontWeight: 900,
+          fontSize: 14,
+          textDecoration: "none",
+          whiteSpace: "nowrap",
+        }}
+      >
         View all →
       </Link>
     </div>
@@ -467,7 +615,17 @@ function HeaderRow({ title, subtitle, href }: { title: string; subtitle?: string
 
 function EmptyCard({ text }: { text: string }) {
   return (
-    <div style={{ border: `1px dashed ${BRAND.border}`, background: "#fff", borderRadius: 16, padding: 26, textAlign: "center", color: BRAND.muted, fontSize: 14 }}>
+    <div
+      style={{
+        border: `1px dashed ${BRAND.border}`,
+        background: "#fff",
+        borderRadius: 16,
+        padding: 26,
+        textAlign: "center",
+        color: BRAND.muted,
+        fontSize: 14,
+      }}
+    >
       {text}
     </div>
   );
@@ -475,21 +633,73 @@ function EmptyCard({ text }: { text: string }) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{ padding: 10, borderRadius: 14, background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)" }}>
-      <div style={{ fontSize: 11, letterSpacing: ".12em", textTransform: "uppercase", opacity: 0.85 }}>{label}</div>
-      <div style={{ marginTop: 3, fontSize: 18, fontWeight: 950 }}>{value}</div>
+    <div
+      style={{
+        padding: 10,
+        borderRadius: 14,
+        background: "rgba(255,255,255,.06)",
+        border: "1px solid rgba(255,255,255,.12)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: 11,
+          letterSpacing: ".12em",
+          textTransform: "uppercase",
+          opacity: 0.85,
+        }}
+      >
+        {label}
+      </div>
+      <div style={{ marginTop: 3, fontSize: 18, fontWeight: 950 }}>
+        {value}
+      </div>
     </div>
   );
 }
 
 function DestinationCard({ name, img }: { name: string; img?: string }) {
   return (
-    <Link href={`/trips?park=${encodeURIComponent(name)}`} style={{ textDecoration: "none", color: "inherit", flex: "0 0 auto" }}>
-      <div style={{ width: 300, height: 120, borderRadius: 16, overflow: "hidden", border: `1px solid ${BRAND.border}`, background: "#fff", position: "relative" }}>
+    <Link
+      href={`/trips?park=${encodeURIComponent(name)}`}
+      style={{ textDecoration: "none", color: "inherit", flex: "0 0 auto" }}
+    >
+      <div
+        style={{
+          width: 300,
+          height: 120,
+          borderRadius: 16,
+          overflow: "hidden",
+          border: `1px solid ${BRAND.border}`,
+          background: "#fff",
+          position: "relative",
+        }}
+      >
         <div style={{ position: "relative", height: "100%" }}>
-          {img ? <Image src={img} alt={name} fill style={{ objectFit: "cover" }} /> : <div style={{ position: "absolute", inset: 0, background: "#F3F4F6" }} />}
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(0,0,0,.62) 100%)" }} />
-          <div style={{ position: "absolute", left: 12, bottom: 10, color: "#fff", fontWeight: 950, fontSize: 15, textShadow: "0 2px 8px rgba(0,0,0,.35)" }}>
+          {img ? (
+            <Image src={img} alt={name} fill style={{ objectFit: "cover" }} />
+          ) : (
+            <div style={{ position: "absolute", inset: 0, background: "#F3F4F6" }} />
+          )}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background:
+                "linear-gradient(180deg, rgba(0,0,0,0) 35%, rgba(0,0,0,.62) 100%)",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              left: 12,
+              bottom: 10,
+              color: "#fff",
+              fontWeight: 950,
+              fontSize: 15,
+              textShadow: "0 2px 8px rgba(0,0,0,.35)",
+            }}
+          >
             {name}
           </div>
         </div>
@@ -508,7 +718,10 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
       : "Price on request";
 
   return (
-    <Link href={`/trips/${trip.id}`} style={{ textDecoration: "none", color: "inherit" }}>
+    <Link
+      href={`/trips/${trip.id}`}
+      style={{ textDecoration: "none", color: "inherit" }}
+    >
       <div
         style={{
           border: highlight ? `2px solid ${BRAND.green2}` : `1px solid ${BRAND.border}`,
@@ -518,22 +731,45 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
           display: "flex",
           flexDirection: "column",
           height: "100%",
-          boxShadow: highlight ? "0 16px 34px rgba(27,77,62,.20)" : "0 1px 3px rgba(0,0,0,.05)",
+          boxShadow: highlight
+            ? "0 16px 34px rgba(27,77,62,.20)"
+            : "0 1px 3px rgba(0,0,0,.05)",
           transform: highlight ? "translateY(-2px)" : "none",
         }}
       >
         <div style={{ position: "relative", height: 180, background: "#F3F4F6" }}>
           {imgSrc ? (
             remote ? (
-              <img src={imgSrc} alt={trip.title} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              <img
+                src={imgSrc}
+                alt={trip.title}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                }}
+              />
             ) : (
-              <Image src={imgSrc} alt={trip.title} fill style={{ objectFit: "cover" }} />
+              <Image
+                src={imgSrc}
+                alt={trip.title}
+                fill
+                style={{ objectFit: "cover" }}
+              />
             )
           ) : (
             <div style={{ position: "absolute", inset: 0, background: "#F3F4F6" }} />
           )}
 
-          <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%)" }} />
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background:
+                "linear-gradient(180deg, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%)",
+            }}
+          />
 
           {highlight ? (
             <div
@@ -555,19 +791,53 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
           ) : null}
 
           <div style={{ position: "absolute", left: 12, bottom: 12, right: 12 }}>
-            <div style={{ color: "#fff", fontWeight: 950, fontSize: 16, lineHeight: 1.25, textShadow: "0 2px 10px rgba(0,0,0,.35)" }}>
+            <div
+              style={{
+                color: "#fff",
+                fontWeight: 950,
+                fontSize: 16,
+                lineHeight: 1.25,
+                textShadow: "0 2px 10px rgba(0,0,0,.35)",
+              }}
+            >
               {clampText(trip.title, 56)}
             </div>
-            <div style={{ marginTop: 6, display: "flex", gap: 8, flexWrap: "wrap", fontSize: 12, color: "rgba(255,255,255,.92)" }}>
+            <div
+              style={{
+                marginTop: 6,
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                fontSize: 12,
+                color: "rgba(255,255,255,.92)",
+              }}
+            >
               {trip.duration ? <span>{trip.duration} days</span> : null}
-              {trip.parks?.length ? <span>• {trip.parks.slice(0, 2).join(", ")}{trip.parks.length > 2 ? " +" : ""}</span> : null}
+              {trip.parks?.length ? (
+                <span>
+                  • {trip.parks.slice(0, 2).join(", ")}
+                  {trip.parks.length > 2 ? " +" : ""}
+                </span>
+              ) : null}
             </div>
           </div>
         </div>
 
-        <div style={{ borderTop: `1px solid ${BRAND.border}`, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ fontSize: 14, fontWeight: 950, color: BRAND.green2 }}>{price}</div>
-          <div style={{ fontSize: 13, fontWeight: 900, color: BRAND.green2 }}>View →</div>
+        <div
+          style={{
+            borderTop: `1px solid ${BRAND.border}`,
+            padding: "10px 12px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <div style={{ fontSize: 14, fontWeight: 950, color: BRAND.green2 }}>
+            {price}
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 900, color: BRAND.green2 }}>
+            View →
+          </div>
         </div>
       </div>
     </Link>
@@ -575,22 +845,70 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
 }
 
 function OperatorCard({ op }: { op: OperatorRow }) {
-  const isApproved = (op.status || "").toLowerCase() === "approved" || (op.status || "").toLowerCase() === "live";
+  const isApproved =
+    (op.status || "").toLowerCase() === "approved" ||
+    (op.status || "").toLowerCase() === "live";
+
   const statusLabel = isApproved ? "Approved" : (op.status || "Pending").toString();
 
   return (
-    <Link href={`/operators/${op.id}`} style={{ textDecoration: "none", color: "inherit" }}>
-      <div style={{ border: `1px solid ${BRAND.border}`, borderRadius: 18, background: "#fff", padding: 14, boxShadow: "0 2px 10px rgba(0,0,0,.06)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "flex-start" }}>
+    <Link
+      href={`/operators/${op.id}`}
+      style={{ textDecoration: "none", color: "inherit" }}
+    >
+      <div
+        style={{
+          border: `1px solid ${BRAND.border}`,
+          borderRadius: 18,
+          background: "#fff",
+          padding: 14,
+          boxShadow: "0 2px 10px rgba(0,0,0,.06)",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            alignItems: "flex-start",
+          }}
+        >
           <div style={{ display: "flex", gap: 10, alignItems: "center", minWidth: 0 }}>
             {op.logo_url ? (
-              <img src={op.logo_url} alt={op.company_name || "Operator"} style={{ width: 42, height: 42, borderRadius: 10, objectFit: "cover", border: `1px solid ${BRAND.border}` }} />
+              <img
+                src={op.logo_url}
+                alt={op.company_name || "Operator"}
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 10,
+                  objectFit: "cover",
+                  border: `1px solid ${BRAND.border}`,
+                }}
+              />
             ) : (
-              <div style={{ width: 42, height: 42, borderRadius: 10, background: "#F3F4F6", border: `1px solid ${BRAND.border}` }} />
+              <div
+                style={{
+                  width: 42,
+                  height: 42,
+                  borderRadius: 10,
+                  background: "#F3F4F6",
+                  border: `1px solid ${BRAND.border}`,
+                }}
+              />
             )}
 
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 950, color: BRAND.ink, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              <div
+                style={{
+                  fontSize: 15,
+                  fontWeight: 950,
+                  color: BRAND.ink,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
                 {op.company_name || "Safari operator"}
               </div>
               <div style={{ marginTop: 2, fontSize: 12, color: BRAND.muted }}>
@@ -599,13 +917,23 @@ function OperatorCard({ op }: { op: OperatorRow }) {
             </div>
           </div>
 
-          <span style={{ fontSize: 11, padding: "4px 10px", borderRadius: 999, background: isApproved ? "#ECFDF3" : "#FEF3C7", color: isApproved ? "#166534" : "#92400E", fontWeight: 900 }}>
+          <span
+            style={{
+              fontSize: 11,
+              padding: "4px 10px",
+              borderRadius: 999,
+              background: isApproved ? "#ECFDF3" : "#FEF3C7",
+              color: isApproved ? "#166534" : "#92400E",
+              fontWeight: 900,
+            }}
+          >
             {statusLabel}
           </span>
         </div>
 
         <p style={{ marginTop: 10, fontSize: 12, color: "#4B5563", lineHeight: 1.6 }}>
-          Verified local partner on Safari Connector. Manage trips, quotes and bookings via your operator dashboard.
+          Verified local partner on Safari Connector. Manage trips, quotes and
+          bookings via your operator dashboard.
         </p>
       </div>
     </Link>
