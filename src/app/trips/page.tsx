@@ -17,14 +17,14 @@ type Trip = {
 
 const BRAND = { primary: "#1B4D3E" };
 
-/** ✅ New: curated sample trips to seed the list or merge with API */
+/** Optional seed list (currently unused). Keep if you want a fallback later. */
 const NEW_TRIPS: Trip[] = [
   {
     id: "sc-001",
     title: "Serengeti & Ngorongoro Highlights – 5 Days",
     duration: 5,
     parks: ["Serengeti", "Ngorongoro"],
-    style: "balanced", // Mid-range → balanced
+    style: "balanced",
     price_from: 1450,
     price_to: 1850,
     images: [
@@ -37,7 +37,7 @@ const NEW_TRIPS: Trip[] = [
     title: "Tarangire • Manyara • Ngorongoro – 3 Days",
     duration: 3,
     parks: ["Tarangire", "Lake Manyara", "Ngorongoro"],
-    style: "value", // Budget → value
+    style: "value",
     price_from: 690,
     price_to: 890,
     images: [
@@ -50,7 +50,7 @@ const NEW_TRIPS: Trip[] = [
     title: "Kilimanjaro Machame Route – 7 Days Trek",
     duration: 7,
     parks: ["Kilimanjaro"],
-    style: "premium", // Private → premium
+    style: "premium",
     price_from: 1890,
     price_to: 2390,
     images: [
@@ -63,7 +63,7 @@ const NEW_TRIPS: Trip[] = [
     title: "Zanzibar Beach + Safari Combo – 8 Days",
     duration: 8,
     parks: ["Serengeti", "Zanzibar"],
-    style: "premium", // Luxury → premium
+    style: "premium",
     price_from: 3250,
     price_to: 3890,
     images: [
@@ -76,7 +76,7 @@ const NEW_TRIPS: Trip[] = [
     title: "Masai Mara Big Cats – 4 Days",
     duration: 4,
     parks: ["Masai Mara"],
-    style: "balanced", // Mid-range → balanced
+    style: "balanced",
     price_from: 1100,
     price_to: 1390,
     images: [
@@ -85,6 +85,13 @@ const NEW_TRIPS: Trip[] = [
     status: "published",
   },
 ];
+
+type LoadFilters = {
+  q?: string;
+  minDays?: number | "";
+  maxDays?: number | "";
+  style?: string;
+};
 
 export default function TripsPage() {
   const [q, setQ] = useState("");
@@ -96,48 +103,63 @@ export default function TripsPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  /** Merge helper (dedupe by id) */
+  /** Merge helper (dedupe by id) — keep for future use if you want to mix NEW_TRIPS */
   function mergeTrips(seed: Trip[], incoming: Trip[]) {
     const map = new Map<string, Trip>();
     [...seed, ...incoming].forEach((t) => map.set(t.id, t));
     return Array.from(map.values());
   }
 
-const load = async () => {
-  setLoading(true);
-  setError(null);
-  try {
-    const params = new URLSearchParams();
-    if (q) params.set("q", q);
-    if (minDays) params.set("minDays", String(minDays));
-    if (maxDays) params.set("maxDays", String(maxDays));
-    if (style) params.set("style", style);
+  const load = async (override?: LoadFilters) => {
+    const q0 = override?.q ?? q;
+    const min0 = override?.minDays ?? minDays;
+    const max0 = override?.maxDays ?? maxDays;
+    const style0 = override?.style ?? style;
 
-    const res = await fetch(`/api/trips?${params.toString()}`, { cache: "no-store" });
-    const data = await res.json();
+    setLoading(true);
+    setError(null);
 
-    if (!res.ok) throw new Error(data?.error || "Failed to load trips");
-    setTrips(data.trips || []);
-  } catch (e: any) {
-    setError(e.message || "Unknown error");
-    setTrips([]); // clear old mock data
-  } finally {
-    setLoading(false);
-  }
-};
+    try {
+      const params = new URLSearchParams();
+      if (q0) params.set("q", q0);
+      if (min0 !== "") params.set("minDays", String(min0));
+      if (max0 !== "") params.set("maxDays", String(max0));
+      if (style0) params.set("style", style0);
+
+      const res = await fetch(`/api/trips?${params.toString()}`, { cache: "no-store" });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data?.error || "Failed to load trips");
+
+      // ✅ Accept both shapes: { trips: [...] } OR [...]
+      const apiTrips: Trip[] = Array.isArray(data) ? data : (data?.trips ?? []);
+
+      // OPTIONAL: if you want fallback seed when API empty, uncomment:
+      // const finalTrips = apiTrips.length ? apiTrips : NEW_TRIPS;
+      // setTrips(finalTrips);
+
+      setTrips(apiTrips);
+    } catch (e: any) {
+      setError(e?.message || "Unknown error");
+      setTrips([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    load(); // load on first mount
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keep your filtering server-driven; client memo stays simple
   const filtered = useMemo(() => trips, [trips]);
 
   return (
     <main className="container trips-root">
       <header className="trips-head">
-        <h1 className="trips-title" style={{ color: BRAND.primary }}>Browse Trips</h1>
+        <h1 className="trips-title" style={{ color: BRAND.primary }}>
+          Browse Trips
+        </h1>
         <p className="muted">Search curated itineraries from verified operators.</p>
       </header>
 
@@ -173,14 +195,21 @@ const load = async () => {
           <option value="balanced">Balanced</option>
           <option value="premium">Premium</option>
         </select>
+
         <div className="actions">
-          <button className="btn-primary" onClick={load} disabled={loading}>
+          <button className="btn-primary" onClick={() => load()} disabled={loading}>
             {loading ? "Searching…" : "Apply"}
           </button>
+
           <button
             className="btn-ghost"
             onClick={() => {
-              setQ(""); setMinDays(""); setMaxDays(""); setStyle(""); load();
+              // ✅ Avoid race condition: pass overrides directly
+              setQ("");
+              setMinDays("");
+              setMaxDays("");
+              setStyle("");
+              load({ q: "", minDays: "", maxDays: "", style: "" });
             }}
             disabled={loading}
           >
@@ -191,44 +220,48 @@ const load = async () => {
 
       {/* Results */}
       {error && <p className="err">{error}</p>}
+
       {loading && !filtered.length && (
         <div className="grid-3">
-          {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
         </div>
       )}
 
       {!loading && filtered.length === 0 && (
         <div className="empty">
           <p>No trips found. Try widening your filters.</p>
-          <a href="/plan" className="btn-primary">Build with AI</a>
+          <a href="/plan" className="btn-primary">
+            Build with AI
+          </a>
         </div>
       )}
 
       {filtered.length > 0 && (
         <>
           <div className="meta">
-            <span>{filtered.length} trip{filtered.length > 1 ? "s" : ""} found</span>
+            <span>
+              {filtered.length} trip{filtered.length > 1 ? "s" : ""} found
+            </span>
           </div>
+
           <section className="grid-3">
             {filtered.map((t) => (
               <a key={t.id} href={`/trips/${t.id}`} className="card hover-float">
                 <div className="thumb-16x9">
-                  <img
-                    src={pickTripImage(t)}
-                    alt={t.title}
-                    loading="lazy"
-                  />
+                  <img src={pickTripImage(t)} alt={t.title} loading="lazy" />
                 </div>
+
                 <div className="card-body">
                   <div className="card-title">{t.title}</div>
                   <div className="muted">
                     {t.duration} days · {t.parks?.slice(0, 2).join(" • ") || "Multiple parks"}
                   </div>
+
                   <div className="row">
                     <span className={`pill pill-${t.style || "value"}`}>{prettyStyle(t.style)}</span>
-                    <span className="price-chip">
-                      {renderPrice(t.price_from, t.price_to)}
-                    </span>
+                    <span className="price-chip">{renderPrice(t.price_from, t.price_to)}</span>
                   </div>
                 </div>
               </a>
@@ -237,7 +270,6 @@ const load = async () => {
         </>
       )}
 
-      {/* ✅ Add clean footer spacing here */}
       <div style={{ marginTop: "6rem" }} />
     </main>
   );
@@ -245,7 +277,6 @@ const load = async () => {
 
 function pickTripImage(t: Trip) {
   if (t.images?.length) return t.images[0]!;
-  // fallback stock
   return "https://images.unsplash.com/photo-1543877087-ebf71fde2be1?w=1200&q=70&auto=format&fit=crop";
 }
 
