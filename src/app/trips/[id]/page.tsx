@@ -52,7 +52,6 @@ type Operator = {
 /* =================== Data Loader =================== */
 
 async function loadTrip(id: string) {
-  // ✅ FIX: supabaseServer() returns Promise<SupabaseClient> → must await
   const supabase = await supabaseServer();
 
   // 🔐 get current logged-in user (if any)
@@ -162,19 +161,12 @@ export default async function TripDetailPage({
     (trip.images && trip.images[0]) ||
     "https://images.unsplash.com/photo-1543877087-ebf71fde2be1?w=1600&q=70&auto=format&fit=crop";
 
-  // bullets for Overview: prefer highlights; fall back to includes
-  const overviewBullets: string[] =
-    (trip.highlights && trip.highlights.length
-      ? trip.highlights
-      : trip.includes && trip.includes.length
-      ? trip.includes
-      : []) ?? [];
+  // ✅ FIX: Overview bullets use highlights ONLY (never fall back to includes)
+  const overviewBullets: string[] = trip.highlights?.length ? trip.highlights : [];
 
-  // Safe check to avoid rendering "0" in JSX when arrays are empty
   const hasIncExc =
     (trip.includes?.length ?? 0) > 0 || (trip.excludes?.length ?? 0) > 0;
 
-  // 🔐 Traveller defaults to pass into enquiry card
   const travellerPrefill = buildTravellerPrefill(user);
 
   return (
@@ -236,6 +228,7 @@ export default async function TripDetailPage({
                   ) : null}
                 </div>
               </div>
+
               {trip.parks?.length ? (
                 <div className={s.badges}>
                   {trip.parks.map((p) => (
@@ -301,7 +294,9 @@ export default async function TripDetailPage({
                     style={{
                       padding: "14px 0",
                       borderBottom:
-                        i === days.length - 1 ? "none" : `1px solid var(--border)`,
+                        i === days.length - 1
+                          ? "none"
+                          : `1px solid var(--border)`,
                     }}
                   >
                     <summary style={{ cursor: "pointer", fontWeight: 600 }}>
@@ -391,7 +386,9 @@ export default async function TripDetailPage({
                             textAlign: "right",
                           }}
                         >
-                          {r.price_pp != null ? money(r.price_pp, r.currency || "USD") : "—"}
+                          {r.price_pp != null
+                            ? money(r.price_pp, r.currency || "USD")
+                            : "—"}
                         </td>
                         <td style={{ padding: 10, borderBottom: "1px solid var(--border)" }}>
                           {r.min_pax ?? "—"}
@@ -435,6 +432,7 @@ export default async function TripDetailPage({
                     ))}
                   </ul>
                 </div>
+
                 <div>
                   <h3
                     style={{
@@ -531,6 +529,7 @@ export default async function TripDetailPage({
                     )}
                   </div>
                 </div>
+
                 {operator.about && (
                   <p
                     style={{

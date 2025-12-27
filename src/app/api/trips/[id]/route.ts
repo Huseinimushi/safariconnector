@@ -16,13 +16,13 @@ export async function GET(
       return NextResponse.json({ error: "Missing id" }, { status: 400 });
     }
 
-    // ✅ FIX: supabaseServer() returns Promise => must await
     const supabase = await supabaseServer();
 
+    // ✅ FIX: removed non-existing columns (country,rating,reviews,best_months)
     const { data: trip, error } = await supabase
       .from("trips")
       .select(
-        "id,title,description,duration,parks,style,price_from,price_to,images,country,rating,reviews,best_months,overview,highlights,includes,excludes,status,operator_id"
+        "id,title,description,duration,parks,style,price_from,price_to,images,hero_url,overview,highlights,includes,excludes,status,operator_id,created_at"
       )
       .eq("id", id)
       .maybeSingle();
