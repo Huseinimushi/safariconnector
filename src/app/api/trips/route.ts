@@ -6,15 +6,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function getAnonSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!url || !anon) {
-    throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY");
-  }
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
   return createClient(url, anon, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
   });
 }
 
@@ -24,41 +24,54 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
 
     const q = (searchParams.get("q") || "").trim();
-    const minDaysRaw = (searchParams.get("minDays") || "").trim();
-    const maxDaysRaw = (searchParams.get("maxDays") || "").trim();
+    const minDays = Number(searchParams.get("minDays"));
+    const maxDays = Number(searchParams.get("maxDays"));
     const style = (searchParams.get("style") || "").trim();
-
-    const minDays = minDaysRaw ? Number(minDaysRaw) : null;
-    const maxDays = maxDaysRaw ? Number(maxDaysRaw) : null;
 
     let query = supabase
       .from("trips")
       .select(
-        "id,title,description,duration,parks,style,price_from,price_to,images,rating,reviews,best_months,overview,highlights,includes,excludes,status,operator_id,created_at"
+        `
+        id,
+        title,
+        duration,
+        parks,
+        style,
+        price_from,
+        price_to,
+        images,
+        status,
+        operator_id
+        `
       )
-      .eq("status", "published")
-      .order("created_at", { ascending: false });
+      .eq("status", "published"); // ✅ public only
 
+    // 🔎 Safe search (only existing columns)
     if (q) {
       const escaped = q.replace(/,/g, "");
-      // ✅ removed country search since column doesn't exist
-      query = query.or(`title.ilike.%${escaped}%,description.ilike.%${escaped}%`);
+      query = query.or(`title.ilike.%${escaped}%`);
     }
 
-    if (minDays !== null && Number.isFinite(minDays)) query = query.gte("duration", minDays);
-    if (maxDays !== null && Number.isFinite(maxDays)) query = query.lte("duration", maxDays);
+    if (!Number.isNaN(minDays)) query = query.gte("duration", minDays);
+    if (!Number.isNaN(maxDays)) query = query.lte("duration", maxDays);
     if (style) query = query.eq("style", style);
 
     const { data, error } = await query;
 
     if (error) {
-      console.error("GET /api/trips error:", error);
-      return NextResponse.json({ error: "Failed to load trips" }, { status: 500 });
+      console.error("TRIPS API ERROR:", error);
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ trips: data ?? [] }, { status: 200 });
   } catch (e: any) {
-    console.error("GET /api/trips unexpected:", e);
-    return NextResponse.json({ error: e?.message || "Unexpected error" }, { status: 500 });
+    console.error("TRIPS API FATAL:", e);
+    return NextResponse.json(
+      { error: e?.message || "Unexpected error" },
+      { status: 500 }
+    );
   }
 }
