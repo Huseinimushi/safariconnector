@@ -49,6 +49,48 @@ const BRAND = {
   border: "#E5E7EB",
 };
 
+const PAGE_CSS = `
+/* Responsive grids */
+@media (max-width: 980px) {
+  .sc-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+@media (max-width: 640px) {
+  .sc-grid-3 { grid-template-columns: 1fr !important; }
+}
+
+/* Carousel */
+.sc-carousel {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  background: #fff;
+  border: 1px solid ${BRAND.border};
+  box-shadow: 0 10px 22px rgba(0,0,0,.06);
+  padding: 12px 0;
+}
+
+/* Scrollable also */
+.sc-carousel { overflow-x: auto; scrollbar-width: thin; }
+.sc-carousel::-webkit-scrollbar { height: 8px; }
+.sc-carousel::-webkit-scrollbar-thumb { background: rgba(15,23,42,.18); border-radius: 999px; }
+
+.sc-track {
+  display: flex;
+  gap: 12px;
+  width: max-content;
+  padding: 0 12px;
+  animation: sc-scroll 28s linear infinite;
+  will-change: transform;
+}
+
+.sc-carousel:hover .sc-track { animation-play-state: paused; }
+
+@keyframes sc-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+`;
+
 const isRemoteUrl = (src: string | null | undefined) =>
   !!src && (src.startsWith("http://") || src.startsWith("https://"));
 
@@ -93,7 +135,10 @@ export default async function HomePage() {
       .in("status", ["approved", "live"])
       .order("company_name", { ascending: true })
       .limit(9),
-    supabase.from("operators").select("id", { count: "exact", head: true }).in("status", ["approved", "live"]),
+    supabase
+      .from("operators")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["approved", "live"]),
   ]);
 
   const trips: TripRow[] = tripsRes.data ?? [];
@@ -121,7 +166,7 @@ export default async function HomePage() {
     parks: destMap.size,
   };
 
-  const heroBg = "/home/hero.jpg"; // keep your existing one
+  const heroBg = "/home/hero.jpg";
   const liveTripTitle =
     trips.length > 0 ? trips[Math.floor(Math.random() * trips.length)].title : "tailor-made safaris";
 
@@ -130,6 +175,9 @@ export default async function HomePage() {
 
   return (
     <main style={{ background: BRAND.sand, minHeight: "100vh" }}>
+      {/* Plain <style> (NO styled-jsx) */}
+      <style dangerouslySetInnerHTML={{ __html: PAGE_CSS }} />
+
       {/* ===================== HERO ===================== */}
       <section
         style={{
@@ -492,67 +540,6 @@ export default async function HomePage() {
           </div>
         </section>
       </div>
-
-      {/* ===================== STYLES ===================== */}
-      <style jsx global>{`
-        /* Responsive grids */
-        @media (max-width: 980px) {
-          .sc-grid-3 {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-          }
-        }
-        @media (max-width: 640px) {
-          .sc-grid-3 {
-            grid-template-columns: 1fr !important;
-          }
-        }
-
-        /* Carousel */
-        .sc-carousel {
-          position: relative;
-          overflow: hidden;
-          border-radius: 18px;
-          background: #fff;
-          border: 1px solid ${BRAND.border};
-          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.06);
-          padding: 12px 0;
-        }
-
-        .sc-track {
-          display: flex;
-          gap: 12px;
-          width: max-content;
-          padding: 0 12px;
-          animation: sc-scroll 28s linear infinite;
-          will-change: transform;
-        }
-
-        .sc-carousel:hover .sc-track {
-          animation-play-state: paused;
-        }
-
-        @keyframes sc-scroll {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(-50%);
-          }
-        }
-
-        /* Make it still usable by user scroll if needed */
-        .sc-carousel {
-          overflow-x: auto;
-          scrollbar-width: thin;
-        }
-        .sc-carousel::-webkit-scrollbar {
-          height: 8px;
-        }
-        .sc-carousel::-webkit-scrollbar-thumb {
-          background: rgba(15, 23, 42, 0.18);
-          border-radius: 999px;
-        }
-      `}</style>
     </main>
   );
 }
@@ -706,7 +693,7 @@ function DestinationCard({ name, img }: { name: string; img?: string }) {
 
 /* Trip card */
 function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
-  const imgSrc = trip.hero_url || `/trips/${trip.id}.jpg`;
+  const imgSrc = trip.hero_url || "";
   const remote = isRemoteUrl(imgSrc);
 
   const price =
@@ -731,8 +718,8 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
         }}
       >
         <div style={{ position: "relative", height: 180, background: "#F3F4F6" }}>
-          {imgSrc &&
-            (remote ? (
+          {imgSrc ? (
+            remote ? (
               <img
                 src={imgSrc}
                 alt={trip.title}
@@ -740,7 +727,10 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
               />
             ) : (
               <Image src={imgSrc} alt={trip.title} fill style={{ objectFit: "cover" }} />
-            ))}
+            )
+          ) : (
+            <div style={{ position: "absolute", inset: 0, background: "#F3F4F6" }} />
+          )}
 
           <div
             style={{
@@ -807,7 +797,8 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
 }
 
 function OperatorCard({ op }: { op: OperatorRow }) {
-  const isApproved = (op.status || "").toLowerCase() === "approved" || (op.status || "").toLowerCase() === "live";
+  const isApproved =
+    (op.status || "").toLowerCase() === "approved" || (op.status || "").toLowerCase() === "live";
   const statusLabel = isApproved ? "Approved" : (op.status || "Pending").toString();
   const statusColor = isApproved ? "#166534" : "#92400E";
   const statusBg = isApproved ? "#ECFDF3" : "#FEF3C7";
