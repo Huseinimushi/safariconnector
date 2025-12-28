@@ -1,10 +1,65 @@
 "use client";
 
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+
+import { supabase } from "@/lib/supabaseClient";
 
 export default function Nav() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  const mountedRef = useRef(true);
+  const [hasUser, setHasUser] = useState(false);
+
+  // -----------------------------
+  // Auth bootstrap (minimal)
+  // -----------------------------
+  useEffect(() => {
+    mountedRef.current = true;
+
+    const boot = async () => {
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (!mountedRef.current) return;
+
+        if (error) {
+          setHasUser(false);
+          return;
+        }
+
+        setHasUser(!!data?.user);
+      } catch {
+        if (!mountedRef.current) return;
+        setHasUser(false);
+      }
+    };
+
+    boot();
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mountedRef.current) return;
+      setHasUser(!!session?.user);
+    });
+
+    return () => {
+      mountedRef.current = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  // -----------------------------
+  // Labels + handlers
+  // -----------------------------
+  const travellerLabel = useMemo(
+    () => (hasUser ? "My Account" : "Login as Traveller"),
+    [hasUser]
+  );
+
+  const handleTravellerClick = () => {
+    router.push(hasUser ? "/traveller/dashboard" : "/login/traveller");
+  };
 
   const isActive = (href: string) => {
     if (!pathname) return false;
@@ -17,8 +72,11 @@ export default function Nav() {
   return (
     <header
       style={{
-        borderBottom: "1px solid #e5e7eb",
+        position: "sticky",
+        top: 0,
+        zIndex: 50,
         background: "#ffffff",
+        borderBottom: "1px solid #e5e7eb",
       }}
     >
       <div
@@ -45,6 +103,7 @@ export default function Nav() {
 
         {/* CENTER: Links */}
         <nav
+          aria-label="Main navigation"
           style={{
             display: "flex",
             alignItems: "center",
@@ -53,12 +112,8 @@ export default function Nav() {
             fontWeight: 500,
             whiteSpace: "nowrap",
           }}
-          aria-label="Main navigation"
         >
-          <Link
-            href="/trips"
-            className={`nav-link${isActive("/trips") ? " active" : ""}`}
-          >
+          <Link href="/trips" className={`nav-link${isActive("/trips") ? " active" : ""}`}>
             Browse Trips
           </Link>
 
@@ -69,35 +124,53 @@ export default function Nav() {
             Tour Operators
           </Link>
 
-          <Link
-            href="/plan"
-            className={`nav-link${isActive("/plan") ? " active" : ""}`}
-          >
+          <Link href="/plan" className={`nav-link${isActive("/plan") ? " active" : ""}`}>
             AI Trip Builder
           </Link>
 
-          <Link
-            href="/about"
-            className={`nav-link${isActive("/about") ? " active" : ""}`}
-          >
+          <Link href="/about" className={`nav-link${isActive("/about") ? " active" : ""}`}>
             About
           </Link>
         </nav>
 
-        {/* RIGHT: Operator Login */}
-        <div style={{ display: "flex", alignItems: "center" }}>
+        {/* RIGHT: Actions */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Traveller */}
+          <button
+            type="button"
+            onClick={handleTravellerClick}
+            style={{
+              border: "1px solid rgba(27,77,62,.35)",
+              color: "#1B4D3E",
+              background: "#ffffff",
+              padding: "8px 14px",
+              borderRadius: 999,
+              fontSize: 13,
+              fontWeight: 600,
+              lineHeight: 1,
+              whiteSpace: "nowrap",
+              cursor: "pointer",
+            }}
+          >
+            {travellerLabel}
+          </button>
+
+          {/* Operator */}
           <a
             href="https://operator.safariconnector.com/login"
             style={{
               border: "1px solid #1B4D3E",
-              color: "#1B4D3E",
-              padding: "8px 16px",
+              color: "#ffffff",
+              background: "#1B4D3E",
+              padding: "8px 14px",
               borderRadius: 999,
               fontSize: 13,
-              fontWeight: 600,
+              fontWeight: 700,
               textDecoration: "none",
               whiteSpace: "nowrap",
               lineHeight: 1,
+              display: "inline-flex",
+              alignItems: "center",
             }}
           >
             Login as Operator
