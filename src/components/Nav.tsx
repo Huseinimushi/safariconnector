@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-
 import { supabase } from "@/lib/supabaseClient";
 
 export default function Nav() {
@@ -14,21 +13,15 @@ export default function Nav() {
   const [hasUser, setHasUser] = useState(false);
 
   // -----------------------------
-  // Auth bootstrap (minimal)
+  // Auth bootstrap (lightweight)
   // -----------------------------
   useEffect(() => {
     mountedRef.current = true;
 
     const boot = async () => {
       try {
-        const { data, error } = await supabase.auth.getUser();
+        const { data } = await supabase.auth.getUser();
         if (!mountedRef.current) return;
-
-        if (error) {
-          setHasUser(false);
-          return;
-        }
-
         setHasUser(!!data?.user);
       } catch {
         if (!mountedRef.current) return;
@@ -38,7 +31,7 @@ export default function Nav() {
 
     boot();
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((_e, session) => {
       if (!mountedRef.current) return;
       setHasUser(!!session?.user);
     });
@@ -50,7 +43,7 @@ export default function Nav() {
   }, []);
 
   // -----------------------------
-  // Labels + handlers
+  // Helpers
   // -----------------------------
   const travellerLabel = useMemo(
     () => (hasUser ? "My Account" : "Login as Traveller"),
@@ -82,34 +75,38 @@ export default function Nav() {
       <div
         className="nav-inner"
         style={{
-          minHeight: 64,
+          minHeight: 76, // accommodates 70px logo cleanly
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          gap: 24,
-          padding: "0 16px",
+          gap: 28,
+          padding: "0 20px",
         }}
       >
-        {/* LEFT: Brand */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {/* LEFT: BIG LOGO */}
+        <div style={{ display: "flex", alignItems: "center" }}>
           <Link href="/" aria-label="Safari Connector home">
             <img
               src="/logo.png"
               alt="Safari Connector"
-              style={{ height: 34, width: "auto", display: "block" }}
+              style={{
+                height: 70,
+                width: "auto",
+                display: "block",
+              }}
             />
           </Link>
         </div>
 
-        {/* CENTER: Links */}
+        {/* CENTER: NAV LINKS */}
         <nav
           aria-label="Main navigation"
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 28,
+            gap: 32,
             fontSize: 14,
-            fontWeight: 500,
+            fontWeight: 600,
             whiteSpace: "nowrap",
           }}
         >
@@ -133,8 +130,8 @@ export default function Nav() {
           </Link>
         </nav>
 
-        {/* RIGHT: Actions */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        {/* RIGHT: ACTIONS */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {/* Traveller */}
           <button
             type="button"
@@ -143,11 +140,10 @@ export default function Nav() {
               border: "1px solid rgba(27,77,62,.35)",
               color: "#1B4D3E",
               background: "#ffffff",
-              padding: "8px 14px",
+              padding: "9px 16px",
               borderRadius: 999,
               fontSize: 13,
               fontWeight: 600,
-              lineHeight: 1,
               whiteSpace: "nowrap",
               cursor: "pointer",
             }}
@@ -162,13 +158,12 @@ export default function Nav() {
               border: "1px solid #1B4D3E",
               color: "#ffffff",
               background: "#1B4D3E",
-              padding: "8px 14px",
+              padding: "9px 16px",
               borderRadius: 999,
               fontSize: 13,
               fontWeight: 700,
               textDecoration: "none",
               whiteSpace: "nowrap",
-              lineHeight: 1,
               display: "inline-flex",
               alignItems: "center",
             }}
