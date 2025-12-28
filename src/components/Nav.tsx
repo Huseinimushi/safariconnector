@@ -5,6 +5,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
+import { FiUser } from "react-icons/fi";
+import { HiOutlineBuildingOffice2 } from "react-icons/hi2";
+
 export default function Nav() {
   const pathname = usePathname();
   const router = useRouter();
@@ -43,10 +46,10 @@ export default function Nav() {
   }, []);
 
   // -----------------------------
-  // Helpers
+  // Labels + handlers
   // -----------------------------
   const travellerLabel = useMemo(
-    () => (hasUser ? "My Account" : "Login as Traveller"),
+    () => (hasUser ? "My Account" : "Traveller"),
     [hasUser]
   );
 
@@ -57,8 +60,6 @@ export default function Nav() {
   const isActive = (href: string) => {
     if (!pathname) return false;
     if (href === "/trips") return pathname === "/trips" || pathname.startsWith("/trips/");
-    if (href === "/tour-operators")
-      return pathname === "/tour-operators" || pathname.startsWith("/tour-operators/");
     return pathname === href;
   };
 
@@ -111,14 +112,7 @@ export default function Nav() {
           }}
         >
           <Link href="/trips" className={`nav-link${isActive("/trips") ? " active" : ""}`}>
-            Browse Trips
-          </Link>
-
-          <Link
-            href="/tour-operators"
-            className={`nav-link${isActive("/tour-operators") ? " active" : ""}`}
-          >
-            Tour Operators
+            Trips
           </Link>
 
           <Link href="/plan" className={`nav-link${isActive("/plan") ? " active" : ""}`}>
@@ -130,45 +124,51 @@ export default function Nav() {
           </Link>
         </nav>
 
-        {/* RIGHT: ACTIONS */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {/* Traveller */}
+        {/* RIGHT: ICON ACTIONS */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {/* Traveller (icon button) */}
           <button
             type="button"
             onClick={handleTravellerClick}
+            aria-label={travellerLabel}
+            title={travellerLabel}
             style={{
-              border: "1px solid rgba(27,77,62,.35)",
-              color: "#1B4D3E",
-              background: "#ffffff",
-              padding: "9px 16px",
+              height: 40,
+              width: 40,
               borderRadius: 999,
-              fontSize: 13,
-              fontWeight: 600,
-              whiteSpace: "nowrap",
+              border: "1px solid rgba(27,77,62,.35)",
+              background: "#ffffff",
+              color: "#1B4D3E",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
               cursor: "pointer",
             }}
           >
-            {travellerLabel}
+            <FiUser style={{ fontSize: 18 }} />
           </button>
 
-          {/* Operator */}
+          {/* Operator (icon button, new tab) */}
           <a
             href="https://operator.safariconnector.com/login"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Login as Operator"
+            title="Login as Operator"
             style={{
-              border: "1px solid #1B4D3E",
-              color: "#ffffff",
-              background: "#1B4D3E",
-              padding: "9px 16px",
+              height: 40,
+              width: 40,
               borderRadius: 999,
-              fontSize: 13,
-              fontWeight: 700,
-              textDecoration: "none",
-              whiteSpace: "nowrap",
+              border: "1px solid #1B4D3E",
+              background: "#1B4D3E",
+              color: "#ffffff",
               display: "inline-flex",
               alignItems: "center",
+              justifyContent: "center",
+              textDecoration: "none",
             }}
           >
-            Login as Operator
+            <HiOutlineBuildingOffice2 style={{ fontSize: 18 }} />
           </a>
         </div>
       </div>
