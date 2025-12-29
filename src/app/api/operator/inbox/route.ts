@@ -6,22 +6,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireUser } from "@/lib/supabase/authServer";
 
-function isValidEmail(v: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((v || "").trim());
-}
-
 /**
- * OPTIONS (helps in some deployments / preflight)
+ * Resolve Supabase env vars safely across common naming conventions.
+ * - SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL
+ * - SUPABASE_SERVICE_ROLE_KEY (required for public insert)
  */
-export async function OPTIONS() {
-  return new NextResponse(null, {
-    status: 204,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    },
-  });
+function getSupabaseEnv() {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+  const service =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_KEY || // (some teams use this alias)
+    "";
+
+  return { url, service };
 }
 
 /**
@@ -44,10 +41,7 @@ export async function GET(_request: NextRequest) {
 
     if (operatorError || !operatorRow) {
       console.error("operator lookup error:", operatorError);
-      return NextResponse.json(
-        { error: "Operator record not found" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Operator record not found" }, { status: 404 });
     }
 
     const operatorId = String((operatorRow as any).id);
@@ -60,10 +54,7 @@ export async function GET(_request: NextRequest) {
 
     if (error) {
       console.error("inbox load error:", error);
-      return NextResponse.json(
-        { error: "Failed to load inbox" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to load inbox" }, { status: 500 });
     }
 
     return NextResponse.json(data ?? []);
@@ -82,84 +73,75 @@ export async function GET(_request: NextRequest) {
  * - view: operator_inbox_view (used by GET)
  *
  * ENV (server only):
- * - SUPABASE_URL
+ * - SUPABASE_URL  (or NEXT_PUBLIC_SUPABASE_URL)
  * - SUPABASE_SERVICE_ROLE_KEY
+ * - OPTIONAL: DEFAULT_OPERATOR_ID (if your Plan page does not yet choose an operator)
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => null);
-
     if (!body) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    // Inputs from AI Studio UI
-    // We allow operator_id optional (fallback), because plan page doesn't choose operator yet.
+    // operator id: accept body.operator_id OR fallback to env DEFAULT_OPERATOR_ID
     const operatorIdRaw = String(body.operator_id || "").trim();
-    const operatorId = operatorIdRaw || "public"; // fallback to keep UX working
+    const operatorId = operatorIdRaw || String(process.env.DEFAULT_OPERATOR_ID || "").trim();
+
     const travellerName = String(body.traveller_name || "").trim();
     const prompt = String(body.prompt || "").trim();
     const itinerary = body.itinerary ?? null;
 
+    if (!operatorId) {
+      return NextResponse.json(
+        { error: "operator_id is required (or set DEFAULT_OPERATOR_ID in server env)" },
+        { status: 400 }
+      );
+    }
     if (travellerName.length < 2) {
-      return NextResponse.json(
-        { error: "traveller_name is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "traveller_name is required" }, { status: 400 });
     }
-
-    const travellerEmail = String(body.traveller_email || "")
-      .trim()
-      .toLowerCase();
-
-    if (travellerEmail && !isValidEmail(travellerEmail)) {
-      return NextResponse.json(
-        { error: "traveller_email is invalid" },
-        { status: 400 }
-      );
-    }
-
     if (!prompt && !itinerary) {
-      return NextResponse.json(
-        { error: "Either prompt or itinerary is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Either prompt or itinerary is required" }, { status: 400 });
     }
 
-    const url = process.env.SUPABASE_URL;
-    const service = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
+    const { url, service } = getSupabaseEnv();
     if (!url || !service) {
       return NextResponse.json(
-        { error: "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY" },
+        {
+          error:
+            "Missing SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) OR SUPABASE_SERVICE_ROLE_KEY on server env",
+        },
         { status: 500 }
       );
     }
 
-    const admin = createClient(url, service, {
-      auth: { persistSession: false },
-    });
+    const admin = createClient(url, service, { auth: { persistSession: false } });
+
+    const travellerEmail = String(body.traveller_email || "").trim().toLowerCase() || null;
 
     const payload = {
       operator_id: operatorId,
       anon_id: body.anon_id ?? null,
       user_id: body.user_id ?? null,
+
       traveller_name: travellerName,
-      traveller_email: travellerEmail || null,
+      traveller_email: travellerEmail,
+
       destination: body.destination ?? null,
       when: body.when ?? null,
-      travellers: Number.isFinite(Number(body.travellers))
-        ? Number(body.travellers)
-        : null,
+      travellers: Number.isFinite(Number(body.travellers)) ? Number(body.travellers) : null,
       budget: body.budget ?? null,
       trip_type: body.trip_type ?? null,
+
       prompt: prompt || null,
       itinerary: itinerary,
-      status: "new",
-      source: body.source ?? "ai_studio",
+
+      status: String(body.status || "new"),
+      source: String(body.source || "ai_studio"),
     };
 
-    const { error } = await admin.from("operator_inbox").insert(payload);
+    const { error } = await admin.from("operator_inbox").insert(payload as any);
     if (error) {
       console.error("operator_inbox insert error:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -168,9 +150,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     console.error("POST /operator/inbox unexpected:", err);
-    return NextResponse.json(
-      { error: err?.message || "Unexpected error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: err?.message || "Unexpected error" }, { status: 500 });
   }
 }
