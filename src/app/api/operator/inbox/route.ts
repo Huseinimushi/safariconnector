@@ -6,6 +6,24 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireUser } from "@/lib/supabase/authServer";
 
+function isValidEmail(v: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((v || "").trim());
+}
+
+/**
+ * OPTIONS (helps in some deployments / preflight)
+ */
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    },
+  });
+}
+
 /**
  * GET /api/operator/inbox
  * Returns inbox items for the currently logged-in operator.
@@ -75,18 +93,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    // Minimal validation (adjust fields to match your DB schema)
-    const operatorId = String(body.operator_id || "").trim();
+    // Inputs from AI Studio UI
+    // We allow operator_id optional (fallback), because plan page doesn't choose operator yet.
+    const operatorIdRaw = String(body.operator_id || "").trim();
+    const operatorId = operatorIdRaw || "public"; // fallback to keep UX working
     const travellerName = String(body.traveller_name || "").trim();
     const prompt = String(body.prompt || "").trim();
     const itinerary = body.itinerary ?? null;
 
-    if (!operatorId) {
-      return NextResponse.json({ error: "operator_id is required" }, { status: 400 });
-    }
     if (travellerName.length < 2) {
-      return NextResponse.json({ error: "traveller_name is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "traveller_name is required" },
+        { status: 400 }
+      );
     }
+
+    const travellerEmail = String(body.traveller_email || "")
+      .trim()
+      .toLowerCase();
+
+    if (travellerEmail && !isValidEmail(travellerEmail)) {
+      return NextResponse.json(
+        { error: "traveller_email is invalid" },
+        { status: 400 }
+      );
+    }
+
     if (!prompt && !itinerary) {
       return NextResponse.json(
         { error: "Either prompt or itinerary is required" },
@@ -94,7 +126,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use service role for public submission (bypasses RLS safely on server)
     const url = process.env.SUPABASE_URL;
     const service = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -109,18 +140,17 @@ export async function POST(request: NextRequest) {
       auth: { persistSession: false },
     });
 
-    // Normalize optional fields
-    const travellerEmail = String(body.traveller_email || "").trim().toLowerCase() || null;
-
     const payload = {
       operator_id: operatorId,
       anon_id: body.anon_id ?? null,
       user_id: body.user_id ?? null,
       traveller_name: travellerName,
-      traveller_email: travellerEmail,
+      traveller_email: travellerEmail || null,
       destination: body.destination ?? null,
       when: body.when ?? null,
-      travellers: Number.isFinite(Number(body.travellers)) ? Number(body.travellers) : null,
+      travellers: Number.isFinite(Number(body.travellers))
+        ? Number(body.travellers)
+        : null,
       budget: body.budget ?? null,
       trip_type: body.trip_type ?? null,
       prompt: prompt || null,

@@ -20,7 +20,28 @@ type ItineraryDay = {
   meals?: string;
 };
 
-type ItineraryPdfPayload = {
+type ItineraryResult = {
+  title: string;
+  summary: string;
+  destination: string;
+  daysCount: number;
+  travelDate: string | null;
+  budgetRange: string;
+  style: string;
+  groupType: string;
+  experiences: string[];
+  days: string[];
+  includes: string[];
+  excludes: string[];
+};
+
+type IncomingPayload = {
+  // what your plan page sends
+  itinerary?: ItineraryResult | null;
+  travellerName?: string;
+  email?: string;
+
+  // optional
   customerName?: string;
   itineraryFor?: string;
   title?: string;
@@ -28,12 +49,14 @@ type ItineraryPdfPayload = {
   operatorName?: string;
   contactPhone?: string;
   contactEmail?: string;
-  days: ItineraryDay[];
+
+  // legacy support: if someone else calls with days[]
+  days?: ItineraryDay[];
 };
 
 const BRAND = {
-  dark: rgb(0.106, 0.302, 0.243), // ~ #1B4D3E
-  mid: rgb(0.251, 0.404, 0.271),  // ~ #406745
+  dark: rgb(0.106, 0.302, 0.243),
+  mid: rgb(0.251, 0.404, 0.271),
   light: rgb(0.902, 0.945, 0.925),
   text: rgb(0.12, 0.12, 0.12),
   muted: rgb(0.42, 0.42, 0.42),
@@ -57,10 +80,6 @@ function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-/**
- * Rounded rectangle via SVG path (pdf-lib supports drawSvgPath).
- * This replaces unsupported drawRectangle({ borderRadius }).
- */
 function drawRoundedRect(
   page: PDFPage,
   x: number,
@@ -130,7 +149,6 @@ function wrapText(font: PDFFont, text: string, fontSize: number, maxWidth: numbe
     } else {
       if (line) lines.push(line);
 
-      // Hard-break a very long word if needed
       if (measureText(font, fontSize, w) > maxWidth) {
         let chunk = "";
         for (const ch of w) {
@@ -152,7 +170,7 @@ function wrapText(font: PDFFont, text: string, fontSize: number, maxWidth: numbe
 }
 
 function newPage(doc: PDFDocument) {
-  return doc.addPage([595.28, 841.89]); // A4 portrait
+  return doc.addPage([595.28, 841.89]);
 }
 
 function drawHeaderBand(page: PDFPage) {
@@ -202,31 +220,71 @@ function drawFooter(page: PDFPage, font: PDFFont, pageIndex: number, total: numb
   });
 }
 
-/**
- * CRITICAL FIX:
- * Convert pdf-lib Uint8Array<ArrayBufferLike> -> real ArrayBuffer (not SharedArrayBuffer-like)
- * by copying into a new ArrayBuffer.
- */
 function uint8ToRealArrayBuffer(u8: Uint8Array): ArrayBuffer {
   const ab = new ArrayBuffer(u8.byteLength);
   new Uint8Array(ab).set(u8);
   return ab;
 }
 
+/**
+ * Convert your ItineraryResult (days:string[]) to ItineraryDay[] for PDF.
+ * No AI schema change needed.
+ */
+function normalizeDaysFromItinerary(it: ItineraryResult): ItineraryDay[] {
+  const src = Array.isArray(it?.days) ? it.days : [];
+  const out: ItineraryDay[] = [];
+
+  for (let i = 0; i < src.length; i++) {
+    const s = safeText(src[i] || "").trim();
+    if (!s) continue;
+
+    const title = s.length > 64 ? s.slice(0, 64) + "…" : s;
+    out.push({
+      day: i + 1,
+      title,
+      bullets: [s],
+    });
+  }
+
+  // If daysCount says 1 but array empty (edge), create one placeholder.
+  if (out.length === 0) {
+    out.push({ day: 1, title: safeText(it.title || "Day 1"), bullets: [safeText(it.summary || "")].filter(Boolean) });
+  }
+
+  return out;
+}
+
 export async function POST(req: Request) {
   try {
-    const body = (await req.json()) as ItineraryPdfPayload;
+    const body = (await req.json()) as IncomingPayload;
 
-    if (!body?.days || !Array.isArray(body.days) || body.days.length === 0) {
+    // Support both callers:
+    // A) legacy: { days: ItineraryDay[] }
+    // B) plan page: { itinerary: ItineraryResult, travellerName, email }
+    let days: ItineraryDay[] = [];
+
+    if (Array.isArray(body?.days) && body.days.length > 0) {
+      days = body.days;
+    } else if (body?.itinerary) {
+      days = normalizeDaysFromItinerary(body.itinerary);
+    }
+
+    if (!days.length) {
       return NextResponse.json({ error: "Missing days[] in payload." }, { status: 400 });
     }
 
-    const customer = safeText(body.customerName || body.itineraryFor || "Guest");
-    const title = safeText(body.title || "Safari Itinerary");
-    const subtitle = safeText(body.subtitle || "Prepared by Safari Connector");
+    const travellerName = safeText(body.travellerName || "");
+    const email = safeText(body.email || "");
+
+    const customer = safeText(body.customerName || body.itineraryFor || travellerName || "Guest");
+    const title =
+      safeText(body.title || body.itinerary?.title || "Safari Itinerary");
+    const subtitle =
+      safeText(body.subtitle || "Prepared by Safari Connector");
+
     const operatorName = safeText(body.operatorName || "");
     const contactPhone = safeText(body.contactPhone || "");
-    const contactEmail = safeText(body.contactEmail || "");
+    const contactEmail = safeText(body.contactEmail || email || "");
 
     const pdfDoc = await PDFDocument.create();
     pdfDoc.setTitle(`${title} - ${customer}`);
@@ -235,16 +293,13 @@ export async function POST(req: Request) {
     const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    // Layout constants
     const MARGIN_X = 48;
     const CONTENT_W = 595.28 - MARGIN_X * 2;
     const TOP_START = 841.89 - 140;
 
-    // Page 1
     let page = newPage(pdfDoc);
     drawHeaderBand(page);
 
-    // "SC" badge
     drawRoundedRect(page, MARGIN_X, 841.89 - 98, 46, 38, 10, {
       fill: BRAND.white,
       opacity: 0.14,
@@ -274,7 +329,6 @@ export async function POST(req: Request) {
       color: rgb(0.93, 0.96, 0.94),
     });
 
-    // Customer chip
     const chipText = `Itinerary for: ${customer}`;
     const chipPadX = 10;
     const chipPadY = 6;
@@ -294,7 +348,6 @@ export async function POST(req: Request) {
       color: BRAND.white,
     });
 
-    // Operator/contact (right)
     const rightX = MARGIN_X + 330;
     const infoYTop = 841.89 - 132 + chipPadY + 1;
 
@@ -335,7 +388,9 @@ export async function POST(req: Request) {
     });
 
     const summaryText =
+      safeText(body.itinerary?.summary) ||
       "This itinerary is a proposed plan. Times and sequencing may adjust based on weather, park regulations, and operational conditions.";
+
     const summaryLines = wrapText(fontRegular, summaryText, 10.5, CONTENT_W - 32);
 
     let sy = cursorY - 44;
@@ -352,7 +407,6 @@ export async function POST(req: Request) {
 
     cursorY -= 100;
 
-    // Day cards across pages
     const pages: PDFPage[] = [page];
     const CARD_PAD = 14;
     const CARD_R = 14;
@@ -365,7 +419,7 @@ export async function POST(req: Request) {
       }
     }
 
-    for (const d of body.days) {
+    for (const d of days) {
       const dayLabel = `Day ${d.day}`;
       const dayTitle = safeText(d.title || "");
       const date = safeText(d.date || "");
@@ -396,16 +450,14 @@ export async function POST(req: Request) {
         borderOpacity: 1,
       });
 
-      // Day pill
-      const pillText = dayLabel;
-      const pillW = measureText(fontBold, 10.5, pillText) + 18;
+      const pillW = measureText(fontBold, 10.5, dayLabel) + 18;
 
       drawRoundedRect(page, MARGIN_X + CARD_PAD, cursorY - 30, pillW, 18, 9, {
         fill: BRAND.light,
         opacity: 1,
       });
 
-      page.drawText(pillText, {
+      page.drawText(dayLabel, {
         x: MARGIN_X + CARD_PAD + 9,
         y: cursorY - 26,
         size: 10.5,
@@ -413,7 +465,6 @@ export async function POST(req: Request) {
         color: BRAND.dark,
       });
 
-      // Title
       const titleX = MARGIN_X + CARD_PAD + pillW + 10;
       const titleLines = wrapText(
         fontBold,
@@ -430,7 +481,6 @@ export async function POST(req: Request) {
         color: BRAND.text,
       });
 
-      // Meta
       let metaY = cursorY - 48;
       const metaParts: string[] = [];
       if (date) metaParts.push(date);
@@ -459,13 +509,11 @@ export async function POST(req: Request) {
         metaY = cursorY - 54;
       }
 
-      // Bullets
       let by = metaY;
       if (bullets.length) {
         for (const b of bullets) {
           const wrapped = wrapText(fontRegular, b, 10.5, CONTENT_W - 2 * CARD_PAD - 14);
 
-          // If bullet causes encoding issues, change "•" to "-"
           page.drawText("•", {
             x: MARGIN_X + CARD_PAD,
             y: by,
@@ -502,13 +550,11 @@ export async function POST(req: Request) {
       cursorY = cursorY - cardH - 14;
     }
 
-    // Footer on all pages
     const totalPages = pages.length;
     for (let i = 0; i < pages.length; i++) {
       drawFooter(pages[i], fontRegular, i + 1, totalPages);
     }
 
-    // SAVE + return as REAL ArrayBuffer (kills the SharedArrayBuffer typing noise)
     const bytes = await pdfDoc.save();
     const arrayBuffer = uint8ToRealArrayBuffer(bytes);
 
