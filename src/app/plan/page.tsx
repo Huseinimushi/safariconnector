@@ -156,7 +156,11 @@ function detectTripIntent(text: string) {
 /**
  * Normalize: Day trip NEVER becomes multi-day.
  */
-function normalizeResult(parsed: ItineraryResult, intentTripType: "day_trip" | "multi_day", fallbackDestination: string) {
+function normalizeResult(
+  parsed: ItineraryResult,
+  intentTripType: "day_trip" | "multi_day",
+  fallbackDestination: string
+) {
   const safe: ItineraryResult = {
     title: String(parsed?.title || "").trim(),
     summary: String(parsed?.summary || "").trim(),
@@ -558,8 +562,83 @@ export default function PlanPage() {
 
   return (
     <div style={S.page}>
-      <main style={S.main}>
-        <div style={S.layout}>
+      {/* ========= Responsive overrides (NO UI/content changes) ========= */}
+      <style>{`
+        /* --- Base safety --- */
+        .sc-plan-main { padding: 18px 18px 26px; }
+        .sc-plan-layout { display: grid; }
+        .sc-plan-panel { min-height: 0; }
+
+        /* ---- <= 980px: 2 columns -> 1 column; right panel becomes normal flow ---- */
+        @media (max-width: 980px) {
+          .sc-plan-layout {
+            grid-template-columns: 1fr !important;
+          }
+          .sc-plan-right {
+            position: static !important;
+            top: auto !important;
+          }
+          .sc-plan-panel {
+            height: auto !important;
+          }
+        }
+
+        /* ---- <= 640px: internal 2-col grids -> 1 col ---- */
+        @media (max-width: 640px) {
+          /* Optional details grid2 */
+          .sc-grid2 {
+            grid-template-columns: 1fr !important;
+          }
+
+          /* Action inputs grid */
+          .sc-actionGrid {
+            grid-template-columns: 1fr !important;
+          }
+
+          /* Included / Not included columns */
+          .sc-cols {
+            grid-template-columns: 1fr !important;
+          }
+        }
+
+        /* ---- <= 520px: tighten paddings + meta grid 3 -> 2 ---- */
+        @media (max-width: 520px) {
+          .sc-plan-main {
+            padding: 14px 12px 22px !important;
+          }
+
+          .sc-layout-gap {
+            gap: 12px !important;
+          }
+
+          .sc-metaGrid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+          }
+
+          .sc-h1 {
+            font-size: 24px !important;
+          }
+
+          .sc-textarea {
+            min-height: 150px !important;
+          }
+
+          .sc-panelHeader {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+          }
+        }
+
+        /* ---- <= 380px: meta grid 2 -> 1 ---- */
+        @media (max-width: 380px) {
+          .sc-metaGrid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
+
+      <main className="sc-plan-main" style={S.main}>
+        <div className="sc-plan-layout sc-layout-gap" style={S.layout}>
           {/* LEFT */}
           <section style={S.left}>
             <div style={S.aiCard}>
@@ -572,7 +651,7 @@ export default function PlanPage() {
               </div>
 
               <div style={S.kicker}>AI itinerary generator</div>
-              <h1 style={S.h1}>Tell us what the client wants.</h1>
+              <h1 className="sc-h1" style={S.h1}>Tell us what the client wants.</h1>
               <p style={S.p}>
                 {isDayTrip
                   ? "Detected: Day trip. Output stays 1 day only with timings."
@@ -590,6 +669,7 @@ export default function PlanPage() {
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
                   style={S.textarea}
+                  className="sc-textarea"
                   placeholder='Example: "Day trip to Chemka from Arusha. Same-day return. Include timings + lunch."'
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
@@ -621,7 +701,7 @@ export default function PlanPage() {
               {showContext && (
                 <div style={S.context}>
                   <div style={S.contextTitle}>Optional trip details</div>
-                  <div style={S.grid2}>
+                  <div className="sc-grid2" style={S.grid2}>
                     <Field label="Destination">
                       <input value={destination} onChange={(e) => setDestination(e.target.value)} style={S.input} />
                     </Field>
@@ -714,9 +794,9 @@ export default function PlanPage() {
           </section>
 
           {/* RIGHT */}
-          <aside style={S.right}>
-            <div style={S.panel}>
-              <div style={S.panelHeader}>
+          <aside className="sc-plan-right" style={S.right}>
+            <div className="sc-plan-panel" style={S.panel}>
+              <div className="sc-panelHeader" style={S.panelHeader}>
                 <div>
                   <div style={S.panelTitle}>Generated itinerary</div>
                   <div style={S.panelSub}>{result ? "Scrollable output." : "Generate to view output here."}</div>
@@ -767,7 +847,7 @@ export default function PlanPage() {
                   )}
                 </div>
 
-                <div style={S.actionGrid}>
+                <div className="sc-actionGrid" style={S.actionGrid}>
                   <input
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
@@ -833,7 +913,7 @@ export default function PlanPage() {
                     <h2 style={S.rTitle}>{result.title}</h2>
                     <p style={S.rSummary}>{result.summary}</p>
 
-                    <div style={S.metaGrid}>
+                    <div className="sc-metaGrid" style={S.metaGrid}>
                       <Meta label="Destination" value={result.destination || destination} />
                       <Meta label="Days" value={`${result.daysCount}`} />
                       <Meta label="When" value={result.travelDate || when || "Any time"} />
@@ -865,7 +945,7 @@ export default function PlanPage() {
                       ))}
                     </div>
 
-                    <div style={S.cols}>
+                    <div className="sc-cols" style={S.cols}>
                       <div style={S.box}>
                         <div style={S.boxTitle}>Included</div>
                         <ul style={S.ul}>
