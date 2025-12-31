@@ -1,3 +1,4 @@
+// src/app/plan/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -21,6 +22,13 @@ type ItineraryResult = {
 
 type Msg = { role: "user" | "assistant"; content: string };
 
+type VerifiedOperator = {
+  id: string;
+  company_name: string | null;
+  location: string | null;
+  country: string | null;
+};
+
 const BRAND = {
   green: "#0B6B3A",
   green2: "#064A28",
@@ -32,8 +40,6 @@ const BRAND = {
   soft2: "#F3F7FB",
   bg: "#FFFFFF",
   warn: "#F59E0B",
-  ok: "#16A34A",
-  danger: "#DC2626",
 };
 
 function isValidEmail(v: string) {
@@ -109,7 +115,6 @@ const LS_ANON_KEY = "sc_anon_lead_id";
 
 /**
  * Detect whether prompt is day-trip vs multi-day.
- * Conservative: if user mentions nights/overnight -> multi.
  */
 function detectTripIntent(text: string) {
   const t = (text || "").toLowerCase();
@@ -149,13 +154,9 @@ function detectTripIntent(text: string) {
 }
 
 /**
- * Hard normalize so Day trip NEVER becomes multi-day.
+ * Normalize: Day trip NEVER becomes multi-day.
  */
-function normalizeResult(
-  parsed: ItineraryResult,
-  intentTripType: "day_trip" | "multi_day",
-  fallbackDestination: string
-) {
+function normalizeResult(parsed: ItineraryResult, intentTripType: "day_trip" | "multi_day", fallbackDestination: string) {
   const safe: ItineraryResult = {
     title: String(parsed?.title || "").trim(),
     summary: String(parsed?.summary || "").trim(),
@@ -174,8 +175,7 @@ function normalizeResult(
   safe.days = safe.days.map((x) => String(x || "").trim()).filter(Boolean);
 
   if (intentTripType === "day_trip") {
-    const first =
-      safe.days[0] || "Morning pickup • activities • lunch • return by evening (same-day).";
+    const first = safe.days[0] || "Morning pickup • activities • lunch • return by evening (same-day).";
     safe.days = [first];
     safe.daysCount = 1;
   } else {
@@ -194,10 +194,10 @@ function normalizeResult(
   return safe;
 }
 
-export default function AIGeneratorPage() {
+export default function PlanPage() {
   const { user } = useAuth();
 
-  // lead capture minimal (needed for PDF + operator followup)
+  // lead capture (send)
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
 
@@ -226,6 +226,12 @@ export default function AIGeneratorPage() {
   // logs
   const [log, setLog] = useState<Msg[]>([]);
 
+  // operators
+  const [operators, setOperators] = useState<VerifiedOperator[]>([]);
+  const [operatorsLoading, setOperatorsLoading] = useState(false);
+  const [operatorsError, setOperatorsError] = useState<string | null>(null);
+  const [selectedOperatorId, setSelectedOperatorId] = useState<string>(""); // IMPORTANT: default is empty
+
   const promptRef = useRef<HTMLTextAreaElement | null>(null);
 
   const anonId = useMemo(() => {
@@ -243,6 +249,42 @@ export default function AIGeneratorPage() {
     setFullName((p) => p || meta.full_name || meta.name || "");
     setEmail((p) => p || (user as any).email || meta.email || "");
   }, [user]);
+
+  // Load verified operators
+  useEffect(() => {
+    let alive = true;
+
+    async function loadOps() {
+      setOperatorsLoading(true);
+      setOperatorsError(null);
+      try {
+        const res = await fetch("/api/operators/verified", { cache: "no-store" });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j?.error || "Failed to load verified operators");
+
+        const list: VerifiedOperator[] = Array.isArray(j?.operators) ? j.operators : [];
+        if (!alive) return;
+
+        setOperators(list);
+
+        // Keep default empty. Do NOT auto-select.
+        setSelectedOperatorId((prev) => (prev && list.some((x) => x.id === prev) ? prev : ""));
+      } catch (e: any) {
+        if (!alive) return;
+        setOperators([]);
+        setSelectedOperatorId("");
+        setOperatorsError(e?.message || "Failed to load verified operators.");
+      } finally {
+        if (!alive) return;
+        setOperatorsLoading(false);
+      }
+    }
+
+    loadOps();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const intentLive = useMemo(() => detectTripIntent(prompt), [prompt]);
   const isDayTrip = intentLive.tripType === "day_trip";
@@ -269,12 +311,12 @@ export default function AIGeneratorPage() {
         when: when || null,
         travellers: travellers ?? null,
         budget: budget ?? null,
-        source: "ai_studio_form_first_v2",
+        source: "plan_form_first_v3",
         status,
         ...extra,
       });
     } catch {
-      // silent by design
+      // silent
     }
   }
 
@@ -387,7 +429,6 @@ export default function AIGeneratorPage() {
     void saveLeadNonBlocking("pdf_download", prompt.trim(), { itinerary_title: result.title });
 
     try {
-      // ✅ NEW PDF ROUTE expects { itinerary, travellerName, email }
       const res = await fetch("/api/itinerary/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -438,25 +479,23 @@ export default function AIGeneratorPage() {
     setToast("Copied to clipboard.");
   }
 
-  /**
-   * ✅ FIXED:
-   * Send to operator via server endpoint: /api/operator/inbox
-   * - avoids RLS problems from client insert
-   * - supports DEFAULT_OPERATOR_ID fallback on server
-   */
   async function sendToOperator() {
     if (!result) return;
+
+    if (!selectedOperatorId) {
+      setToast("Chagua operator kwanza.");
+      return;
+    }
 
     const nm = safeFullName(fullName);
     const em = email.trim().toLowerCase();
 
     if (!nm || nm === "Traveller") {
       setToast("Weka jina la mteja (Full name) kabla ya kutuma kwa operator.");
-      setShowDownload(true);
       return;
     }
-    if (em && !isValidEmail(em)) {
-      setToast("Email si sahihi. Irekebishe au iachie wazi.");
+    if (!isValidEmail(em)) {
+      setToast("Email inahitajika na lazima iwe sahihi.");
       setShowDownload(true);
       return;
     }
@@ -465,25 +504,23 @@ export default function AIGeneratorPage() {
     setToast(null);
 
     try {
-      const operatorId = (process.env.NEXT_PUBLIC_DEFAULT_OPERATOR_ID as string | undefined) || "";
-
       const payload = {
-        operator_id: operatorId || undefined, // route will fallback to DEFAULT_OPERATOR_ID
+        operator_id: selectedOperatorId,
         anon_id: anonId,
         user_id: user?.id ?? null,
+
         traveller_name: nm,
-        traveller_email: em || null,
+        traveller_email: em,
+        phone: null,
 
         destination: result.destination || destination,
         when: result.travelDate || when || null,
         travellers,
-        budget: result.budgetRange || currencyRangeFromBudget(budget),
-        trip_type: result.daysCount === 1 ? "day_trip" : "multi_day",
 
         prompt: prompt.trim(),
         itinerary: result,
-        status: "new",
-        source: "ai_studio",
+
+        source_page: "/plan",
       };
 
       const res = await fetch("/api/operator/inbox", {
@@ -495,15 +532,29 @@ export default function AIGeneratorPage() {
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error || "Failed to send to operator");
 
-      void saveLeadNonBlocking("sent_to_operator", prompt.trim(), { itinerary_title: result.title });
+      void saveLeadNonBlocking("sent_to_operator", prompt.trim(), {
+        itinerary_title: result.title,
+        operator_id: selectedOperatorId,
+      });
 
       setToast("✅ Sent to operator. You will be contacted for a quote.");
     } catch (e: any) {
+      // If you still see schema-cache error here, run:
+      // notify pgrst, 'reload schema';
       setToast(`❌ ${e?.message || "Failed to send to operator."}`);
     } finally {
       setSending(false);
     }
   }
+
+  const selectedOperatorLabel = useMemo(() => {
+    if (!selectedOperatorId) return null;
+    const op = operators.find((x) => x.id === selectedOperatorId);
+    if (!op) return null;
+    const name = op.company_name || "Operator";
+    const place = [op.country, op.location].filter(Boolean).join(" • ");
+    return place ? `${name} — ${place}` : name;
+  }, [operators, selectedOperatorId]);
 
   return (
     <div style={S.page}>
@@ -512,7 +563,6 @@ export default function AIGeneratorPage() {
           {/* LEFT */}
           <section style={S.left}>
             <div style={S.aiCard}>
-              {/* Brand block */}
               <div style={S.brandLine}>
                 <div style={S.brandMark}>SC</div>
                 <div>
@@ -521,7 +571,6 @@ export default function AIGeneratorPage() {
                 </div>
               </div>
 
-              {/* Quick intro */}
               <div style={S.kicker}>AI itinerary generator</div>
               <h1 style={S.h1}>Tell us what the client wants.</h1>
               <p style={S.p}>
@@ -530,7 +579,6 @@ export default function AIGeneratorPage() {
                   : "Detected: Multi-day. AI generates day-by-day plan + inclusions."}
               </p>
 
-              {/* FORM FIRST */}
               <div style={S.composer}>
                 <div style={S.composerTop}>
                   <div style={S.composerTitle}>Client request</div>
@@ -556,11 +604,7 @@ export default function AIGeneratorPage() {
                     <button type="button" style={S.ghost} onClick={() => setShowContext((v) => !v)}>
                       {showContext ? "Hide details" : "Trip details (optional)"}
                     </button>
-                    {isDayTrip ? (
-                      <span style={S.dayTripPill}>Day trip</span>
-                    ) : (
-                      <span style={S.multiPill}>Multi-day</span>
-                    )}
+                    {isDayTrip ? <span style={S.dayTripPill}>Day trip</span> : <span style={S.multiPill}>Multi-day</span>}
                   </div>
 
                   <button
@@ -574,7 +618,6 @@ export default function AIGeneratorPage() {
                 </div>
               </div>
 
-              {/* OPTIONAL DETAILS */}
               {showContext && (
                 <div style={S.context}>
                   <div style={S.contextTitle}>Optional trip details</div>
@@ -611,19 +654,11 @@ export default function AIGeneratorPage() {
 
                     <Field label="Travellers">
                       <div style={S.stepper}>
-                        <button
-                          type="button"
-                          style={S.stepBtn}
-                          onClick={() => setTravellers((t) => clampInt(t - 1, 1, 12))}
-                        >
+                        <button type="button" style={S.stepBtn} onClick={() => setTravellers((t) => clampInt(t - 1, 1, 12))}>
                           −
                         </button>
                         <div style={S.stepVal}>{travellers}</div>
-                        <button
-                          type="button"
-                          style={S.stepBtn}
-                          onClick={() => setTravellers((t) => clampInt(t + 1, 1, 12))}
-                        >
+                        <button type="button" style={S.stepBtn} onClick={() => setTravellers((t) => clampInt(t + 1, 1, 12))}>
                           +
                         </button>
                       </div>
@@ -645,7 +680,6 @@ export default function AIGeneratorPage() {
                 </div>
               )}
 
-              {/* SUGGESTIONS */}
               <div style={S.suggestionsWrap}>
                 <div style={S.suggestionsTitle}>Suggestions</div>
                 <div style={S.chips}>
@@ -665,7 +699,6 @@ export default function AIGeneratorPage() {
                 </div>
               </div>
 
-              {/* LOG */}
               {log.length > 0 && (
                 <div style={S.log}>
                   <div style={S.logTitle}>Recent</div>
@@ -699,10 +732,40 @@ export default function AIGeneratorPage() {
                 </div>
               </div>
 
-              {/* capture / send */}
+              {/* SEND BAR */}
               <div style={S.actionBar}>
                 <div style={S.actionTitle}>Send to operator</div>
-                <div style={S.actionSub}>Capture contact and submit for a quote.</div>
+                <div style={S.actionSub}>Client selects operator, capture contact, submit for a quote.</div>
+
+                <div style={{ marginTop: 10 }}>
+                  <div style={S.smallLabel}>Select operator</div>
+
+                  <select
+                    value={selectedOperatorId}
+                    onChange={(e) => setSelectedOperatorId(e.target.value)}
+                    style={{
+                      ...S.select,
+                      borderColor: !selectedOperatorId ? BRAND.warn : BRAND.line,
+                    }}
+                    disabled={operatorsLoading}
+                  >
+                    <option value="">{operatorsLoading ? "Loading operators..." : "Choose operator"}</option>
+                    {operators.map((op) => {
+                      const name = op.company_name || "Operator";
+                      const place = [op.country, op.location].filter(Boolean).join(" • ");
+                      return (
+                        <option key={op.id} value={op.id}>
+                          {place ? `${name} — ${place}` : name}
+                        </option>
+                      );
+                    })}
+                  </select>
+
+                  {operatorsError && <div style={S.warnBox}>{operatorsError}</div>}
+                  {!operatorsError && selectedOperatorLabel && (
+                    <div style={S.hintBox}>Selected operator will receive your request.</div>
+                  )}
+                </div>
 
                 <div style={S.actionGrid}>
                   <input
@@ -719,22 +782,24 @@ export default function AIGeneratorPage() {
                       ...S.actionInput,
                       borderColor: email && !isValidEmail(email) ? BRAND.warn : BRAND.line,
                     }}
-                    placeholder="Email (optional, required for PDF)"
+                    placeholder="Email (required to send + PDF)"
                   />
                 </div>
 
                 <button
                   type="button"
                   onClick={sendToOperator}
-                  disabled={!result || sending}
+                  disabled={!result || sending || !selectedOperatorId}
                   style={{
                     ...S.sendBtn,
-                    opacity: !result || sending ? 0.6 : 1,
-                    cursor: !result || sending ? "not-allowed" : "pointer",
+                    opacity: !result || sending || !selectedOperatorId ? 0.6 : 1,
+                    cursor: !result || sending || !selectedOperatorId ? "not-allowed" : "pointer",
                   }}
                 >
                   {sending ? "Sending..." : "Send to operator"}
                 </button>
+
+                {!selectedOperatorId && <div style={S.sendHint}>Select an operator to enable sending.</div>}
               </div>
 
               {showDownload && (
@@ -747,7 +812,6 @@ export default function AIGeneratorPage() {
                 </div>
               )}
 
-              {/* SCROLLABLE OUTPUT */}
               <div style={S.panelScroll}>
                 {!result && !generating && (
                   <div style={S.empty}>
@@ -1002,9 +1066,47 @@ const S: Record<string, React.CSSProperties> = {
   actionBar: { padding: 14, borderBottom: `1px solid ${BRAND.line}`, background: BRAND.soft, flex: "0 0 auto" },
   actionTitle: { fontWeight: 1000 },
   actionSub: { marginTop: 4, color: BRAND.muted, fontSize: 12, lineHeight: 1.5 },
+
+  smallLabel: { fontSize: 11, fontWeight: 950, color: BRAND.muted, textTransform: "uppercase", letterSpacing: "0.12em", marginBottom: 6 },
+
+  select: {
+    width: "100%",
+    border: `1px solid ${BRAND.line}`,
+    borderRadius: 14,
+    padding: "10px 12px",
+    outline: "none",
+    background: "#fff",
+    fontSize: 13.5,
+    fontWeight: 700,
+  },
+
+  warnBox: {
+    marginTop: 8,
+    border: `1px solid rgba(245, 158, 11, 0.35)`,
+    background: "rgba(245, 158, 11, 0.10)",
+    color: "#7A4C00",
+    padding: "9px 10px",
+    borderRadius: 14,
+    fontWeight: 800,
+    fontSize: 12.5,
+  },
+
+  hintBox: {
+    marginTop: 8,
+    border: `1px solid ${BRAND.line}`,
+    background: "rgba(255,255,255,0.7)",
+    padding: "9px 10px",
+    borderRadius: 14,
+    color: BRAND.muted,
+    fontWeight: 800,
+    fontSize: 12.5,
+  },
+
   actionGrid: { marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },
   actionInput: { width: "100%", border: `1px solid ${BRAND.line}`, borderRadius: 14, padding: "10px 12px", outline: "none", background: "#fff", fontSize: 13.5 },
+
   sendBtn: { marginTop: 10, width: "100%", borderRadius: 999, border: `1px solid ${BRAND.green}`, background: BRAND.green, color: "#fff", padding: "10px 12px", fontWeight: 1000 },
+  sendHint: { marginTop: 8, color: BRAND.muted, fontSize: 12, fontWeight: 800 },
 
   capture: { padding: 14, borderBottom: `1px solid ${BRAND.line}`, background: "#fff", flex: "0 0 auto" },
   captureTitle: { fontWeight: 1000 },

@@ -4,152 +4,137 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { requireUser } from "@/lib/supabase/authServer";
 
-/**
- * Resolve Supabase env vars safely across common naming conventions.
- * - SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL
- * - SUPABASE_SERVICE_ROLE_KEY (required for public insert)
- */
-function getSupabaseEnv() {
-  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-  const service =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_SERVICE_KEY || // (some teams use this alias)
-    "";
+type ItineraryResult = {
+  title: string;
+  summary: string;
+  destination: string;
+  daysCount: number;
+  travelDate: string | null;
+  budgetRange: string;
+  style: string;
+  groupType: string;
+  experiences: string[];
+  days: string[];
+  includes: string[];
+  excludes: string[];
+};
 
-  return { url, service };
+function isValidEmail(v: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || "").trim());
 }
 
-/**
- * GET /api/operator/inbox
- * Returns inbox items for the currently logged-in operator.
- */
-export async function GET(_request: NextRequest) {
-  try {
-    const { user, supabase } = await requireUser();
+function jsonError(message: string, status = 400, extra?: any) {
+  return NextResponse.json({ error: message, ...(extra ? { extra } : {}) }, { status });
+}
 
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+function getAdminSupabase() {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    const { data: operatorRow, error: operatorError } = await supabase
-      .from("operators_view")
-      .select("id")
-      .eq("user_id", user.id)
-      .maybeSingle();
+  if (!url) throw new Error("Missing SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL).");
+  if (!key) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY.");
 
-    if (operatorError || !operatorRow) {
-      console.error("operator lookup error:", operatorError);
-      return NextResponse.json({ error: "Operator record not found" }, { status: 404 });
-    }
-
-    const operatorId = String((operatorRow as any).id);
-
-    const { data, error } = await supabase
-      .from("operator_inbox_view")
-      .select("*")
-      .eq("operator_id", operatorId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("inbox load error:", error);
-      return NextResponse.json({ error: "Failed to load inbox" }, { status: 500 });
-    }
-
-    return NextResponse.json(data ?? []);
-  } catch (err) {
-    console.error("inbox unexpected error:", err);
-    return NextResponse.json({ error: "Unexpected error" }, { status: 500 });
-  }
+  return createClient(url, key, {
+    auth: { persistSession: false },
+  });
 }
 
 /**
  * POST /api/operator/inbox
- * Public endpoint used by AI Studio / lead forms to submit an enquiry to operator inbox.
- *
- * REQUIRED DB:
- * - table: operator_inbox (insert target)
- * - view: operator_inbox_view (used by GET)
- *
- * ENV (server only):
- * - SUPABASE_URL  (or NEXT_PUBLIC_SUPABASE_URL)
- * - SUPABASE_SERVICE_ROLE_KEY
- * - OPTIONAL: DEFAULT_OPERATOR_ID (if your Plan page does not yet choose an operator)
+ * Inserts a quote request into `quote_requests`
  */
-export async function POST(request: NextRequest) {
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json().catch(() => null);
-    if (!body) {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    const body = await req.json().catch(() => null);
+    if (!body) return jsonError("Invalid JSON payload.");
+
+    const {
+      operator_id,
+      anon_id,
+      user_id,
+      traveller_name,
+      traveller_email,
+      phone,
+      destination,
+      when,
+      travellers,
+      prompt,
+      itinerary,
+      source_page,
+    }: {
+      operator_id?: string;
+      anon_id?: string;
+      user_id?: string | null;
+      traveller_name?: string;
+      traveller_email?: string | null;
+      phone?: string | null;
+      destination?: string | null;
+      when?: string | null;
+      travellers?: number | null;
+      prompt?: string | null;
+      itinerary?: ItineraryResult | null;
+      source_page?: string | null;
+    } = body;
+
+    if (!operator_id) return jsonError("operator_id is required.");
+    if (!traveller_name || String(traveller_name).trim().length < 2) {
+      return jsonError("traveller_name is required.");
     }
 
-    // operator id: accept body.operator_id OR fallback to env DEFAULT_OPERATOR_ID
-    const operatorIdRaw = String(body.operator_id || "").trim();
-    const operatorId = operatorIdRaw || String(process.env.DEFAULT_OPERATOR_ID || "").trim();
+    const email = traveller_email ? String(traveller_email).trim().toLowerCase() : null;
+    if (email && !isValidEmail(email)) return jsonError("Invalid email.");
 
-    const travellerName = String(body.traveller_name || "").trim();
-    const prompt = String(body.prompt || "").trim();
-    const itinerary = body.itinerary ?? null;
+    if (!prompt || String(prompt).trim().length < 5) return jsonError("prompt is required.");
+    if (!itinerary || !itinerary.title) return jsonError("itinerary is required.");
 
-    if (!operatorId) {
-      return NextResponse.json(
-        { error: "operator_id is required (or set DEFAULT_OPERATOR_ID in server env)" },
-        { status: 400 }
-      );
-    }
-    if (travellerName.length < 2) {
-      return NextResponse.json({ error: "traveller_name is required" }, { status: 400 });
-    }
-    if (!prompt && !itinerary) {
-      return NextResponse.json({ error: "Either prompt or itinerary is required" }, { status: 400 });
-    }
+    const sb = getAdminSupabase();
 
-    const { url, service } = getSupabaseEnv();
-    if (!url || !service) {
-      return NextResponse.json(
-        {
-          error:
-            "Missing SUPABASE_URL (or NEXT_PUBLIC_SUPABASE_URL) OR SUPABASE_SERVICE_ROLE_KEY on server env",
-        },
-        { status: 500 }
-      );
-    }
+    // Align to your exact columns:
+    // id, operator_id, full_name, email, country, phone, message, source_page,
+    // created_at, date, trip_id, trip_title, pax, name, note, traveller_id, itinerary, anon_id, user_id
+    const row = {
+      operator_id,
+      full_name: String(traveller_name).trim(),
+      name: String(traveller_name).trim(), // legacy column; keep aligned
+      email,
+      phone: phone ? String(phone).trim() : null,
 
-    const admin = createClient(url, service, { auth: { persistSession: false } });
+      country: destination ? String(destination).trim() : null, // you can change mapping later
+      date: when ? String(when).trim() : null,
+      pax: typeof travellers === "number" ? travellers : null,
 
-    const travellerEmail = String(body.traveller_email || "").trim().toLowerCase() || null;
+      trip_title: String(itinerary.title || "").trim() || null,
+      trip_id: null,
 
-    const payload = {
-      operator_id: operatorId,
-      anon_id: body.anon_id ?? null,
-      user_id: body.user_id ?? null,
+      message: String(prompt).trim(), // main message
+      source_page: source_page || "/plan",
 
-      traveller_name: travellerName,
-      traveller_email: travellerEmail,
+      note: JSON.stringify({
+        summary: itinerary.summary || null,
+        destination: itinerary.destination || destination || null,
+        daysCount: itinerary.daysCount || null,
+        travelDate: itinerary.travelDate || when || null,
+        budgetRange: itinerary.budgetRange || null,
+      }),
 
-      destination: body.destination ?? null,
-      when: body.when ?? null,
-      travellers: Number.isFinite(Number(body.travellers)) ? Number(body.travellers) : null,
-      budget: body.budget ?? null,
-      trip_type: body.trip_type ?? null,
+      traveller_id: user_id || null,
+      user_id: user_id || null,
 
-      prompt: prompt || null,
-      itinerary: itinerary,
-
-      status: String(body.status || "new"),
-      source: String(body.source || "ai_studio"),
+      anon_id: anon_id || null,
+      itinerary, // jsonb column exists
     };
 
-    const { error } = await admin.from("operator_inbox").insert(payload as any);
+    const { data, error } = await sb.from("quote_requests").insert(row).select("id").single();
+
     if (error) {
-      console.error("operator_inbox insert error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      // If you still see schema-cache errors after adding columns:
+      // Run: notify pgrst, 'reload schema';
+      return jsonError(error.message || "Insert failed.", 400, error);
     }
 
-    return NextResponse.json({ ok: true });
-  } catch (err: any) {
-    console.error("POST /operator/inbox unexpected:", err);
-    return NextResponse.json({ error: err?.message || "Unexpected error" }, { status: 500 });
+    return NextResponse.json({ ok: true, id: data?.id });
+  } catch (e: any) {
+    return jsonError(e?.message || "Server error", 500);
   }
 }

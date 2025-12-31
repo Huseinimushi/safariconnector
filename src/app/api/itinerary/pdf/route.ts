@@ -1,494 +1,481 @@
-// src/app/api/itinerary/pdf/route.ts
-import { NextResponse } from "next/server";
-import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from "pdf-lib";
-
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-type ItineraryResult = {
-  title: string;
-  summary: string;
-  destination: string;
-  daysCount: number;
-  travelDate: string | null;
-  budgetRange: string;
+import { NextRequest, NextResponse } from "next/server";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import fs from "fs/promises";
+import path from "path";
+
+type Itinerary = {
+  title?: string;
+  summary?: string;
+  destination?: string;
+  daysCount?: number;
+  travelDate?: string | null;
+  budgetRange?: string;
   style?: string;
   groupType?: string;
   experiences?: string[];
-  days: string[];
+  days?: string[];
   includes?: string[];
   excludes?: string[];
 };
 
-type ItineraryDay = {
-  day: number;
-  title: string;
-  date?: string;
-  locations?: string[];
-  bullets?: string[];
-  lodge?: string;
-  meals?: string;
-};
-
-type RequestPayload =
-  | {
-      travellerName?: string;
-      email?: string;
-      title?: string;
-      subtitle?: string;
-      operatorName?: string;
-      contactPhone?: string;
-      contactEmail?: string;
-      itinerary?: ItineraryResult;
-    }
-  | {
-      customerName?: string;
-      itineraryFor?: string;
-      title?: string;
-      subtitle?: string;
-      operatorName?: string;
-      contactPhone?: string;
-      contactEmail?: string;
-      days: ItineraryDay[];
-    };
-
-const BRAND = {
-  dark: rgb(0.106, 0.302, 0.243), // #1B4D3E-ish
-  mid: rgb(0.251, 0.404, 0.271), // #406745-ish
-  light: rgb(0.92, 0.96, 0.94),
-  card: rgb(1, 1, 1),
-  ink: rgb(0.10, 0.12, 0.16),
-  muted: rgb(0.42, 0.45, 0.50),
-  line: rgb(0.88, 0.90, 0.92),
-  soft: rgb(0.96, 0.98, 0.97),
-};
-
-function replaceAllCompat(input: string, search: string, replacement: string) {
-  return input.split(search).join(replacement);
+function toStr(v: any) {
+  if (v === null || v === undefined) return "";
+  return typeof v === "string" ? v : String(v);
 }
-
-function safeText(v: unknown) {
-  let s = String(v ?? "");
-
-  // kill typical encoding offenders
-  s = replaceAllCompat(s, "→", ">");
-  s = replaceAllCompat(s, "➜", ">");
-  s = replaceAllCompat(s, "–", "-");
-  s = replaceAllCompat(s, "—", "-");
-  s = replaceAllCompat(s, "•", "-");
-  s = replaceAllCompat(s, "\u00A0", " "); // non-breaking space
-
-  return s.trim();
+function safeArray<T>(v: any): T[] {
+  return Array.isArray(v) ? v : [];
 }
-
-function clamp(n: number, min: number, max: number) {
+function fmtDate(v: any) {
+  if (!v) return "-";
+  try {
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return "-";
+    return d.toDateString();
+  } catch {
+    return "-";
+  }
+}
+function clampInt(v: any, min: number, max: number) {
+  const n = typeof v === "number" && Number.isFinite(v) ? v : min;
   return Math.max(min, Math.min(max, n));
 }
 
-function measure(font: PDFFont, size: number, text: string) {
-  return font.widthOfTextAtSize(text, size);
-}
+function splitLines(text: string, font: any, size: number, maxWidth: number) {
+  const t = (text || "").replace(/\s+/g, " ").trim();
+  if (!t) return ["-"];
 
-function wrap(font: PDFFont, text: string, size: number, maxW: number) {
-  const words = safeText(text).split(/\s+/).filter(Boolean);
-  const out: string[] = [];
+  const words = t.split(" ");
+  const lines: string[] = [];
   let line = "";
 
   for (const w of words) {
-    const t = line ? `${line} ${w}` : w;
-    if (measure(font, size, t) <= maxW) {
-      line = t;
+    const test = line ? line + " " + w : w;
+    const width = font.widthOfTextAtSize(test, size);
+    if (width <= maxWidth) {
+      line = test;
     } else {
-      if (line) out.push(line);
-      // hard-break very long token
-      if (measure(font, size, w) > maxW) {
-        let chunk = "";
-        for (const ch of w) {
-          const tt = chunk + ch;
-          if (measure(font, size, tt) <= maxW) chunk = tt;
-          else {
-            if (chunk) out.push(chunk);
-            chunk = ch;
-          }
-        }
-        line = chunk;
-      } else {
-        line = w;
-      }
+      if (line) lines.push(line);
+      line = w;
     }
   }
-  if (line) out.push(line);
-  return out;
+  if (line) lines.push(line);
+  return lines.length ? lines : ["-"];
 }
 
-function A4(doc: PDFDocument) {
-  return doc.addPage([595.28, 841.89]);
-}
-
-// Rounded rectangle via SVG path (pdf-lib supports drawSvgPath)
-function roundedRect(
-  page: PDFPage,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-  opts?: {
-    fill?: ReturnType<typeof rgb>;
-    opacity?: number;
-    borderColor?: ReturnType<typeof rgb>;
-    borderWidth?: number;
-    borderOpacity?: number;
-  }
-) {
-  const radius = clamp(r, 0, Math.min(w, h) / 2);
-
-  const x0 = x;
-  const y0 = y;
-  const x1 = x + w;
-  const y1 = y + h;
-
-  const p = [
-    `M ${x0 + radius} ${y0}`,
-    `L ${x1 - radius} ${y0}`,
-    `C ${x1 - radius / 2} ${y0} ${x1} ${y0 + radius / 2} ${x1} ${y0 + radius}`,
-    `L ${x1} ${y1 - radius}`,
-    `C ${x1} ${y1 - radius / 2} ${x1 - radius / 2} ${y1} ${x1 - radius} ${y1}`,
-    `L ${x0 + radius} ${y1}`,
-    `C ${x0 + radius / 2} ${y1} ${x0} ${y1 - radius / 2} ${x0} ${y1 - radius}`,
-    `L ${x0} ${y0 + radius}`,
-    `C ${x0} ${y0 + radius / 2} ${x0 + radius / 2} ${y0} ${x0 + radius} ${y0}`,
-    "Z",
-  ].join(" ");
-
-  page.drawSvgPath(p, {
-    color: opts?.fill ?? BRAND.card,
-    opacity: opts?.opacity ?? 1,
-    borderColor: opts?.borderColor,
-    borderWidth: opts?.borderWidth,
-    borderOpacity: opts?.borderOpacity,
-  });
-}
-
-function footer(page: PDFPage, font: PDFFont, idx: number, total: number) {
-  const { width } = page.getSize();
-  const y = 26;
-
-  page.drawLine({
-    start: { x: 48, y: 44 },
-    end: { x: width - 48, y: 44 },
-    thickness: 1,
-    color: BRAND.line,
-  });
-
-  page.drawText("Safari Connector", { x: 48, y, size: 9, font, color: BRAND.muted });
-
-  const right = `Page ${idx} / ${total}`;
-  const rw = measure(font, 9, right);
-  page.drawText(right, { x: width - 48 - rw, y, size: 9, font, color: BRAND.muted });
-}
-
-function uint8ToArrayBuffer(u8: Uint8Array): ArrayBuffer {
-  const ab = new ArrayBuffer(u8.byteLength);
-  new Uint8Array(ab).set(u8);
-  return ab;
-}
-
-/** Convert ItineraryResult -> printable sections */
-function toPrintableFromResult(it: ItineraryResult) {
-  const title = safeText(it.title || "Safari Itinerary");
-  const destination = safeText(it.destination || "");
-  const summary = safeText(it.summary || "");
-  const when = safeText(it.travelDate || "Any time");
-  const budget = safeText(it.budgetRange || "");
-  const daysCount = Number(it.daysCount || (Array.isArray(it.days) ? it.days.length : 0) || 1);
-
-  const days = (it.days || []).map((d, i) => ({
-    label: `Day ${i + 1}`,
-    text: safeText(d),
-  }));
-
-  const includes = (it.includes || []).map(safeText).filter(Boolean);
-  const excludes = (it.excludes || []).map(safeText).filter(Boolean);
-
-  return { title, destination, summary, when, budget, daysCount, days, includes, excludes };
-}
-
-/** Convert old ItineraryDay[] -> printable days */
-function toPrintableFromOld(days: ItineraryDay[]) {
-  const out = (days || []).map((d) => {
-    const title = safeText(d.title || "");
-    const date = safeText(d.date || "");
-    const locs = (d.locations || []).map(safeText).filter(Boolean);
-    const bullets = (d.bullets || []).map(safeText).filter(Boolean);
-    const lodge = safeText(d.lodge || "");
-    const meals = safeText(d.meals || "");
-
-    const metaParts: string[] = [];
-    if (date) metaParts.push(date);
-    if (locs.length) metaParts.push(locs.join(" - "));
-    if (lodge) metaParts.push(`Lodge: ${lodge}`);
-    if (meals) metaParts.push(`Meals: ${meals}`);
-
-    const meta = metaParts.length ? metaParts.join(" | ") + "\n" : "";
-    const bulletText = bullets.length ? bullets.map((b) => `- ${b}`).join("\n") : "";
-    const body = safeText(`${meta}${bulletText}`) || "No details provided.";
-
-    return { label: `Day ${Number(d.day || 1)}`, text: title ? `${title}\n${body}` : body };
-  });
-
-  return { days: out, daysCount: out.length };
-}
-
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const body = (await req.json()) as RequestPayload;
+    const body = await req.json();
 
-    // Identify payload type
-    const maybeItinerary = (body as any)?.itinerary as ItineraryResult | undefined;
-    const oldDays = (body as any)?.days as ItineraryDay[] | undefined;
+    const it: Itinerary =
+      body?.itinerary ||
+      body?.itineraryResult ||
+      body?.data ||
+      body?.it ||
+      body?.payload ||
+      {};
 
-    const travellerName = safeText((body as any)?.travellerName || (body as any)?.customerName || (body as any)?.itineraryFor || "Guest");
-    const email = safeText((body as any)?.email || "");
-    const operatorName = safeText((body as any)?.operatorName || "");
-    const contactPhone = safeText((body as any)?.contactPhone || "");
-    const contactEmail = safeText((body as any)?.contactEmail || "");
+    const travellerName = toStr(body?.travellerName || body?.name || "");
+    const email = toStr(body?.email || "");
+    const subtitle = toStr(body?.subtitle || "AI Generated Itinerary");
 
-    let title = safeText((body as any)?.title || "");
-    let subtitle = safeText((body as any)?.subtitle || "Prepared by Safari Connector");
+    const daysArr = safeArray<string>(it.days)
+      .map((x) => toStr(x).trim())
+      .filter(Boolean);
 
-    let printable: ReturnType<typeof toPrintableFromResult> & { includes: string[]; excludes: string[]; days: { label: string; text: string }[]; };
-    if (maybeItinerary && Array.isArray(maybeItinerary.days) && maybeItinerary.days.length) {
-      printable = toPrintableFromResult(maybeItinerary);
-      if (!title) title = printable.title;
-    } else if (Array.isArray(oldDays) && oldDays.length) {
-      // fallback old format
-      const old = toPrintableFromOld(oldDays);
-      printable = {
-        title: title || "Safari Itinerary",
-        destination: "",
-        summary:
-          "This itinerary is a proposed plan. Times and sequencing may adjust based on weather, park regulations, and operational conditions.",
-        when: "",
-        budget: "",
-        daysCount: old.daysCount,
-        days: old.days,
-        includes: [],
-        excludes: [],
-      };
-      if (!title) title = printable.title;
-    } else {
-      return NextResponse.json({ error: "Missing itinerary.days[] (or legacy days[])" }, { status: 400 });
+    let daysCount = 1;
+    if (typeof it.daysCount === "number" && Number.isFinite(it.daysCount) && it.daysCount > 0) {
+      daysCount = clampInt(it.daysCount, 1, 21);
+    } else if (daysArr.length > 0) {
+      daysCount = clampInt(daysArr.length, 1, 21);
     }
 
-    const pdfDoc = await PDFDocument.create();
-    pdfDoc.setTitle(`${title} - ${travellerName}`.slice(0, 120));
-    pdfDoc.setAuthor("Safari Connector");
+    const title = toStr(it.title).trim() || "Safari Itinerary";
+    const summary = toStr(it.summary).trim();
+    const destination = toStr(it.destination).trim() || "-";
 
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const includes = safeArray<string>(it.includes).map((x) => toStr(x).trim()).filter(Boolean);
+    const excludes = safeArray<string>(it.excludes).map((x) => toStr(x).trim()).filter(Boolean);
+    const experiences = safeArray<string>(it.experiences).map((x) => toStr(x).trim()).filter(Boolean);
 
-    // Layout
-    const M = 48;
-    const PAGE_W = 595.28;
-    const PAGE_H = 841.89;
-    const W = PAGE_W - M * 2;
+    // Brand palette (RGB 0..1)
+    const BRAND = {
+      green: rgb(0.043, 0.42, 0.227), // ~ #0B6B3A
+      greenDark: rgb(0.024, 0.29, 0.157), // ~ #064A28
+      ink: rgb(0.043, 0.071, 0.125), // #0B1220
+      muted: rgb(0.333, 0.404, 0.486), // #55677C
+      line: rgb(0.902, 0.929, 0.961), // #E6EDF5
+      soft: rgb(0.965, 0.98, 0.973), // #F6FAF8
+      card: rgb(0.953, 0.969, 0.984), // #F3F7FB
+      white: rgb(1, 1, 1),
+      danger: rgb(0.75, 0.15, 0.15),
+    };
 
-    let page = A4(pdfDoc);
-    const pages: PDFPage[] = [page];
+    const pdf = await PDFDocument.create();
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
 
-    function newPage() {
-      page = A4(pdfDoc);
-      pages.push(page);
-      return page;
+    // Optional logo (public/logo.png)
+    let logoImg: any = null;
+    try {
+      const logoPath = path.join(process.cwd(), "public", "logo.png");
+      const logoBytes = await fs.readFile(logoPath);
+      logoImg = await pdf.embedPng(logoBytes);
+    } catch {
+      logoImg = null;
     }
 
-    // Header band
-    page.drawRectangle({ x: 0, y: PAGE_H - 132, width: PAGE_W, height: 132, color: BRAND.dark });
-    page.drawRectangle({ x: 0, y: PAGE_H - 136, width: PAGE_W, height: 4, color: BRAND.mid, opacity: 0.95 });
+    // Layout constants
+    const PAGE_W = 595;
+    const PAGE_H = 842;
+    const M = 44;
+    const CONTENT_W = PAGE_W - M * 2;
 
-    // Logo badge
-    roundedRect(page, M, PAGE_H - 96, 56, 44, 12, { fill: rgb(1, 1, 1), opacity: 0.14 });
-    page.drawText("SC", { x: M + 16, y: PAGE_H - 83, size: 18, font: bold, color: rgb(1, 1, 1) });
+    const HEADER_H = 92;
+    const FOOTER_SAFE = 58; // keep space for footer
+    const SAFE_BOTTOM = M + FOOTER_SAFE;
 
-    // Title
-    const mainTitle = safeText(title || "Safari Itinerary");
-    const tLines = wrap(bold, mainTitle, 22, W - 70);
-    page.drawText(tLines[0] || mainTitle, { x: M + 70, y: PAGE_H - 68, size: 22, font: bold, color: rgb(1, 1, 1) });
+    let page = pdf.addPage([PAGE_W, PAGE_H]);
+    let y = PAGE_H;
 
-    // Subtitle
-    page.drawText(subtitle || "Prepared by Safari Connector", {
-      x: M + 70,
-      y: PAGE_H - 92,
-      size: 11,
-      font,
-      color: rgb(0.92, 0.96, 0.94),
-    });
+    const drawHeader = () => {
+      // header bar
+      page.drawRectangle({ x: 0, y: PAGE_H - HEADER_H, width: PAGE_W, height: HEADER_H, color: BRAND.green });
+      // subtle bottom strip
+      page.drawRectangle({ x: 0, y: PAGE_H - HEADER_H - 4, width: PAGE_W, height: 6, color: BRAND.greenDark });
 
-    // Info chips row
-    const chipY = PAGE_H - 124;
-    const chipH = 22;
+      // logo badge (white) so logo never disappears into green
+      const badgeX = M;
+      const badgeY = PAGE_H - 76;
+      const badgeW = 150;
+      const badgeH = 44;
 
-    function chip(x: number, text: string) {
-      const s = safeText(text);
-      const pad = 10;
-      const cw = measure(font, 10.2, s) + pad * 2;
-      roundedRect(page, x, chipY, cw, chipH, 11, { fill: rgb(1, 1, 1), opacity: 0.12 });
-      page.drawText(s, { x: x + pad, y: chipY + 6, size: 10.2, font, color: rgb(1, 1, 1) });
-      return x + cw + 10;
-    }
-
-    let cx = M;
-    cx = chip(cx, `Itinerary for: ${travellerName}`);
-    if (email) cx = chip(cx, `Email: ${email}`);
-
-    // Right side contact block (optional)
-    const infoLines: string[] = [];
-    if (operatorName) infoLines.push(`Operator: ${operatorName}`);
-    if (contactPhone) infoLines.push(`Phone: ${contactPhone}`);
-    if (contactEmail) infoLines.push(`Email: ${contactEmail}`);
-
-    let iy = PAGE_H - 124 + 6;
-    for (const ln of infoLines.slice(0, 3)) {
-      const wln = measure(font, 9.3, ln);
-      page.drawText(ln, {
-        x: PAGE_W - M - wln,
-        y: iy,
-        size: 9.3,
-        font,
-        color: rgb(0.92, 0.96, 0.94),
-      });
-      iy -= 12;
-    }
-
-    // Cursor start
-    let y = PAGE_H - 160;
-
-    function ensure(h: number) {
-      if (y - h < 70) {
-        newPage();
-        y = PAGE_H - 64;
-      }
-    }
-
-    // Summary card
-    ensure(110);
-    roundedRect(page, M, y - 98, W, 98, 16, { fill: BRAND.soft, borderColor: BRAND.line, borderWidth: 1, borderOpacity: 1 });
-    page.drawText("Trip Summary", { x: M + 16, y: y - 28, size: 12.5, font: bold, color: BRAND.dark });
-
-    const summaryText = printable.summary || "Proposed itinerary. Times may adjust based on weather and operations.";
-    const sLines = wrap(font, summaryText, 10.8, W - 32);
-    let sy = y - 46;
-    for (const ln of sLines.slice(0, 4)) {
-      page.drawText(ln, { x: M + 16, y: sy, size: 10.8, font, color: BRAND.ink });
-      sy -= 14;
-    }
-
-    // Meta row (destination/when/budget/days)
-    const meta = [
-      printable.destination ? `Destination: ${printable.destination}` : "",
-      printable.when ? `When: ${printable.when}` : "",
-      printable.budget ? `Budget: ${printable.budget}` : "",
-      printable.daysCount ? `Days: ${printable.daysCount}` : "",
-    ].filter(Boolean);
-
-    if (meta.length) {
-      const metaText = meta.join("   •   ");
-      const mLines = wrap(font, metaText, 9.8, W - 32);
-      let my = y - 88;
-      for (const ln of mLines.slice(0, 2)) {
-        page.drawText(ln, { x: M + 16, y: my, size: 9.8, font, color: BRAND.muted });
-        my -= 12;
-      }
-    }
-
-    y -= 118;
-
-    // Day cards
-    for (const d of printable.days) {
-      const label = safeText(d.label);
-      const text = safeText(d.text);
-
-      const headerH = 28;
-      const lines = wrap(font, text, 10.7, W - 32);
-      const bodyH = Math.max(18, lines.length * 14);
-      const cardH = headerH + bodyH + 22;
-
-      ensure(cardH);
-
-      roundedRect(page, M, y - cardH, W, cardH, 16, {
-        fill: BRAND.card,
+      page.drawRectangle({
+        x: badgeX,
+        y: badgeY,
+        width: badgeW,
+        height: badgeH,
+        color: BRAND.white,
         borderColor: BRAND.line,
         borderWidth: 1,
-        borderOpacity: 1,
       });
 
-      // label pill
-      const pill = label;
-      const pillW = measure(bold, 10.2, pill) + 22;
-      roundedRect(page, M + 16, y - 28, pillW, 18, 9, { fill: BRAND.light });
-      page.drawText(pill, { x: M + 16 + 11, y: y - 24, size: 10.2, font: bold, color: BRAND.dark });
+      if (logoImg) {
+        const scale = Math.min(badgeW / logoImg.width, badgeH / logoImg.height) * 0.86;
+        const w = logoImg.width * scale;
+        const h = logoImg.height * scale;
+        page.drawImage(logoImg, {
+          x: badgeX + (badgeW - w) / 2,
+          y: badgeY + (badgeH - h) / 2,
+          width: w,
+          height: h,
+        });
+      } else {
+        page.drawText("Safari Connector", { x: badgeX + 12, y: badgeY + 15, size: 12, font: bold, color: BRAND.ink });
+      }
 
-      // day text
-      let ty = y - 52;
+      // right side title
+      page.drawText(subtitle, { x: M + 170, y: PAGE_H - 56, size: 11, font, color: BRAND.white });
+      page.drawText(title, { x: M + 170, y: PAGE_H - 78, size: 18, font: bold, color: BRAND.white });
+
+      y = PAGE_H - HEADER_H - 24; // start content below header
+    };
+
+    const newPage = () => {
+      page = pdf.addPage([PAGE_W, PAGE_H]);
+      y = PAGE_H;
+      drawHeader();
+    };
+
+    // IMPORTANT: ensureSpace must be called BEFORE capturing any "topY/cardTop"
+    const ensureSpace = (need: number) => {
+      if (y - need >= SAFE_BOTTOM) return;
+      newPage();
+    };
+
+    const drawFooter = (pageObj: any, pageIndex: number, total: number) => {
+      const footerY = 26;
+      pageObj.drawLine({
+        start: { x: M, y: footerY + 16 },
+        end: { x: PAGE_W - M, y: footerY + 16 },
+        thickness: 1,
+        color: BRAND.line,
+      });
+      pageObj.drawText("safariconnector.com", { x: M, y: footerY, size: 9, font, color: BRAND.muted });
+      pageObj.drawText(`Page ${pageIndex} of ${total}`, { x: PAGE_W - M - 70, y: footerY, size: 9, font, color: BRAND.muted });
+    };
+
+    const drawSectionTitle = (t: string) => {
+      ensureSpace(46);
+      page.drawText(t, { x: M, y, size: 13, font: bold, color: BRAND.ink });
+      y -= 10;
+      page.drawLine({ start: { x: M, y }, end: { x: M + CONTENT_W, y }, thickness: 1, color: BRAND.line });
+      y -= 18;
+    };
+
+    const drawCard = (x: number, topY: number, w: number, h: number, color = BRAND.card) => {
+      page.drawRectangle({ x, y: topY - h, width: w, height: h, color, borderColor: BRAND.line, borderWidth: 1 });
+    };
+
+    const drawKeyValueCard = (x: number, topY: number, w: number, label: string, value: string) => {
+      const pad = 12;
+      const h = 58;
+      drawCard(x, topY, w, h);
+
+      page.drawText(label.toUpperCase(), { x: x + pad, y: topY - 18, size: 8.5, font: bold, color: BRAND.muted });
+
+      const lines = splitLines(value || "-", font, 11.5, w - pad * 2);
+      page.drawText(lines[0], { x: x + pad, y: topY - 38, size: 11.5, font: bold, color: BRAND.ink });
+
+      return h;
+    };
+
+    const drawBulletListAt = (items: string[], x: number, startY: number, maxW: number, bulletColor = BRAND.green) => {
+      const size = 10.5;
+      const lineGap = 14;
+      const padLeft = 14;
+
+      let yy = startY;
+
+      emphasizeNoItems: if (!items.length) {
+        const minNeed = 18;
+        if (yy - minNeed < SAFE_BOTTOM) break emphasizeNoItems;
+        page.drawText("-", { x, y: yy, size, font, color: BRAND.muted });
+        yy -= 18;
+        return yy;
+      }
+
+      for (const raw of items) {
+        const lines = splitLines(raw, font, size, maxW - padLeft);
+        const need = 14 + lines.length * lineGap + 10;
+
+        // if list would overflow page, move to new page but keep section continuity
+        if (yy - need < SAFE_BOTTOM) {
+          newPage();
+          yy = y;
+        }
+
+        // bullet
+        page.drawCircle({ x: x + 4, y: yy + 3, size: 2.2, color: bulletColor });
+
+        // text
+        let ty = yy;
+        for (const ln of lines) {
+          page.drawText(ln, { x: x + padLeft, y: ty, size, font, color: BRAND.ink });
+          ty -= lineGap;
+        }
+        yy = ty - 6;
+      }
+
+      return yy;
+    };
+
+    // Build PDF
+    drawHeader();
+
+    // Top info cards (2 columns)
+    const colGap = 12;
+    const colW = (CONTENT_W - colGap) / 2;
+    const leftX = M;
+    const rightX = M + colW + colGap;
+
+    const factsLeft: Array<[string, string]> = [
+      ["Destination", destination],
+      ["Days", String(daysCount)],
+      ["When", fmtDate(it.travelDate || null)],
+    ];
+
+    const factsRight: Array<[string, string]> = [
+      ["Budget", toStr(it.budgetRange) || "-"],
+      ["Style", toStr(it.style) || "-"],
+      ["Group", toStr(it.groupType) || "-"],
+    ];
+
+    ensureSpace(220);
+    const topY = y;
+
+    let usedH = 0;
+    for (let i = 0; i < 3; i++) {
+      usedH += drawKeyValueCard(leftX, topY - usedH, colW, factsLeft[i][0], factsLeft[i][1]) + 10;
+    }
+
+    let usedHR = 0;
+    for (let i = 0; i < 3; i++) {
+      usedHR += drawKeyValueCard(rightX, topY - usedHR, colW, factsRight[i][0], factsRight[i][1]) + 10;
+    }
+
+    y = topY - Math.max(usedH, usedHR) - 6;
+
+    // Summary
+    if (summary) {
+      drawSectionTitle("Summary");
+      const lines = splitLines(summary, font, 11, CONTENT_W);
+      ensureSpace(18 + lines.length * 15);
       for (const ln of lines) {
-        page.drawText(ln, { x: M + 16, y: ty, size: 10.7, font, color: BRAND.ink });
-        ty -= 14;
+        page.drawText(ln, { x: M, y, size: 11, font, color: BRAND.ink });
+        y -= 15;
       }
-
-      y -= cardH + 14;
+      y -= 4;
     }
 
-    // Included / Not included sections (if present)
-    function listSection(title: string, items: string[]) {
-      if (!items || !items.length) return;
+    // Focus areas (pills)
+    if (experiences.length) {
+      drawSectionTitle("Focus Areas");
 
-      const headH = 22;
-      const lines = items.slice(0, 28).map((x) => `- ${safeText(x)}`);
-      const wrapped: string[] = [];
-      for (const ln of lines) wrapped.push(...wrap(font, ln, 10.2, (W - 32) / 2));
+      const pillPadX = 10;
+      const pillH = 18;
+      const rowGap = 8;
 
-      const h = headH + wrapped.length * 14 + 18;
-      ensure(h);
+      let cx = M;
+      let cy = y;
 
-      roundedRect(page, M, y - h, W, h, 16, {
-        fill: BRAND.soft,
-        borderColor: BRAND.line,
-        borderWidth: 1,
-        borderOpacity: 1,
-      });
+      for (const p of experiences.slice(0, 14)) {
+        const txt = p.length > 52 ? p.slice(0, 51) + "…" : p;
+        const tw = font.widthOfTextAtSize(txt, 9.5);
+        const pw = tw + pillPadX * 2;
 
-      page.drawText(title, { x: M + 16, y: y - 22, size: 12, font: bold, color: BRAND.dark });
+        // wrap to new row
+        if (cx + pw > M + CONTENT_W) {
+          cy -= (pillH + rowGap);
+          cx = M;
+        }
 
-      let ly = y - 44;
-      for (const ln of wrapped) {
-        page.drawText(ln, { x: M + 16, y: ly, size: 10.2, font, color: BRAND.ink });
-        ly -= 14;
+        // if row doesn't fit, new page and continue
+        if (cy - (pillH + 18) < SAFE_BOTTOM) {
+          newPage();
+          cy = y;
+          cx = M;
+        }
+
+        page.drawRectangle({
+          x: cx,
+          y: cy - pillH,
+          width: pw,
+          height: pillH,
+          color: BRAND.soft,
+          borderColor: BRAND.line,
+          borderWidth: 1,
+        });
+        page.drawText(txt, { x: cx + pillPadX, y: cy - 12.5, size: 9.5, font: bold, color: BRAND.greenDark });
+
+        cx += pw + 8;
       }
 
-      y -= h + 14;
+      y = cy - 30;
     }
 
-    listSection("Included", printable.includes || []);
-    listSection("Not Included", printable.excludes || []);
+    // Day-by-day
+    drawSectionTitle("Day-by-day Plan");
+
+    if (!daysArr.length) {
+      ensureSpace(24);
+      page.drawText("No detailed day plan provided by AI.", { x: M, y, size: 11, font, color: BRAND.muted });
+      y -= 18;
+    } else {
+      for (let i = 0; i < daysArr.length; i++) {
+        const dayTitle = `Day ${i + 1}`;
+        const dayText = daysArr[i];
+
+        const pad = 14;
+        const cardW = CONTENT_W;
+
+        const dayLines = splitLines(dayText, font, 10.5, cardW - pad * 2);
+        const h = 44 + dayLines.length * 14;
+
+        // ensure space FIRST, then set cardTop from current y (after possible page break)
+        ensureSpace(h + 14);
+        const cardTop = y;
+
+        page.drawRectangle({
+          x: M,
+          y: cardTop - h,
+          width: cardW,
+          height: h,
+          color: BRAND.white,
+          borderColor: BRAND.line,
+          borderWidth: 1,
+        });
+
+        page.drawRectangle({
+          x: M,
+          y: cardTop - h,
+          width: 6,
+          height: h,
+          color: BRAND.green,
+        });
+
+        page.drawText(dayTitle, { x: M + pad, y: cardTop - 20, size: 11.5, font: bold, color: BRAND.ink });
+
+        let ty = cardTop - 38;
+        for (const ln of dayLines) {
+          page.drawText(ln, { x: M + pad, y: ty, size: 10.5, font, color: BRAND.ink });
+          ty -= 14;
+        }
+
+        y = cardTop - h - 12;
+      }
+    }
+
+    // Included / Not included (2 columns)
+    remindInclusions: {
+      drawSectionTitle("Inclusions");
+
+      const boxH = 190;
+      const listColW = (CONTENT_W - colGap) / 2;
+
+      // ensure space BEFORE setting colTop
+      ensureSpace(boxH + 90);
+      const colTop = y;
+
+      // Included box
+      drawCard(leftX, colTop, listColW, boxH);
+      page.drawText("Included", { x: leftX + 12, y: colTop - 20, size: 11.5, font: bold, color: BRAND.ink });
+
+      // Not Included box
+      drawCard(rightX, colTop, listColW, boxH);
+      page.drawText("Not included", { x: rightX + 12, y: colTop - 20, size: 11.5, font: bold, color: BRAND.ink });
+
+      // render lists with local cursors (no global y jumping weirdness)
+      const listStartY = colTop - 40;
+      const leftEnd = drawBulletListAt(includes.slice(0, 18), leftX + 12, listStartY, listColW - 24, BRAND.green);
+      const rightEnd = drawBulletListAt(excludes.slice(0, 18), rightX + 12, listStartY, listColW - 24, BRAND.danger);
+
+      // restore y below boxes
+      y = Math.min(leftEnd, rightEnd);
+      y = Math.min(y, colTop - boxH - 16);
+    }
+
+    // Client line
+    if (travellerName || email) {
+      ensureSpace(70);
+      page.drawText("Client", { x: M, y, size: 10, font: bold, color: BRAND.muted });
+      y -= 14;
+      const line = [travellerName || "-", email ? `(${email})` : ""].filter(Boolean).join(" ");
+      page.drawText(line, { x: M, y, size: 11, font, color: BRAND.ink });
+      y -= 18;
+    }
 
     // Footer on all pages
+    const pages = pdf.getPages();
     const total = pages.length;
-    for (let i = 0; i < total; i++) footer(pages[i], font, i + 1, total);
+    for (let i = 0; i < total; i++) {
+      drawFooter(pages[i], i + 1, total);
+    }
 
-    const bytes = await pdfDoc.save();
-    const ab = uint8ToArrayBuffer(bytes);
+    const bytes = await pdf.save();
 
-    const filename = `${safeText(title)} - ${safeText(travellerName)}`.slice(0, 80);
-
-    return new NextResponse(ab, {
+    return new NextResponse(Buffer.from(bytes), {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${encodeURIComponent(filename)}.pdf"`,
+        "Content-Disposition": 'inline; filename="Safari-Itinerary.pdf"',
         "Cache-Control": "no-store",
       },
     });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "Failed to generate PDF" }, { status: 500 });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "PDF generation failed" }, { status: 500 });
   }
 }
