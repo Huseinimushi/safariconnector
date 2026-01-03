@@ -310,15 +310,16 @@ export default function PlanPage() {
   // prompt
   const [prompt, setPrompt] = useState("");
 
-  // state
-  const [generating, setGenerating] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [result, setResult] = useState<ItineraryResult | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+// state
+const [generating, setGenerating] = useState(false);
+const [sending, setSending] = useState(false);
+const [result, setResult] = useState<ItineraryResult | null>(null);
+const [toast, setToast] = useState<string | null>(null);
+const [showLoginModal, setShowLoginModal] = useState(false);
 
-  // UI
-  const [showContext, setShowContext] = useState(false);
-  const [showDownload, setShowDownload] = useState(false);
+// UI
+const [showContext, setShowContext] = useState(false);
+const [showDownload, setShowDownload] = useState(false);
 
   // logs
   const [log, setLog] = useState<Msg[]>([]);
@@ -346,6 +347,27 @@ export default function PlanPage() {
     setFullName((p) => p || meta.full_name || meta.name || "");
     setEmail((p) => p || (user as any).email || meta.email || "");
   }, [user]);
+
+  // Poll auth while login modal open to close it when user signs in
+  useEffect(() => {
+    if (!showLoginModal) return;
+    let cancelled = false;
+    const poll = setInterval(async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        if (!cancelled && data?.user) {
+          setShowLoginModal(false);
+          setToast("Logged in. You can now send to an operator.");
+        }
+      } catch {
+        // ignore
+      }
+    }, 1200);
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
+  }, [showLoginModal]);
 
   // Load verified operators
   useEffect(() => {
@@ -587,6 +609,12 @@ export default function PlanPage() {
       return;
     }
 
+    if (!user) {
+      setToast("Please log in or sign up to send this itinerary.");
+      setShowLoginModal(true);
+      return;
+    }
+
     const nm = safeFullName(fullName);
     const em = email.trim().toLowerCase();
 
@@ -597,12 +625,6 @@ export default function PlanPage() {
     if (!isValidEmail(em)) {
       setToast("Email inahitajika na lazima iwe sahihi.");
       setShowDownload(true);
-      return;
-    }
-
-    if (!user) {
-      setToast("Please log in or sign up to send this itinerary.");
-      window.location.href = "https://safariconnector.com/login/traveller";
       return;
     }
 
@@ -1084,6 +1106,24 @@ export default function PlanPage() {
         </div>
       </main>
 
+      {showLoginModal && (
+        <div style={S.modalOverlay} onClick={() => setShowLoginModal(false)}>
+          <div style={S.modalBox} onClick={(e) => e.stopPropagation()}>
+            <div style={S.modalHeader}>
+              <span>Log in to send your itinerary</span>
+              <button style={S.modalClose} onClick={() => setShowLoginModal(false)}>
+                Close
+              </button>
+            </div>
+            <iframe
+              src="https://safariconnector.com/login/traveller"
+              title="Traveller login"
+              style={{ width: "100%", height: "500px", border: "none" }}
+            />
+          </div>
+        </div>
+      )}
+
       {toast && (
         <div style={S.toast} onClick={() => setToast(null)} title="Click to dismiss">
           {toast}
@@ -1344,6 +1384,41 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 13,
     maxWidth: "min(920px, calc(100vw - 24px))",
     cursor: "pointer",
+  },
+  modalOverlay: {
+    position: "fixed",
+    inset: 0,
+    background: "rgba(0,0,0,0.45)",
+    zIndex: 120,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 12,
+  },
+  modalBox: {
+    background: "#fff",
+    borderRadius: 18,
+    width: "min(480px, 95vw)",
+    boxShadow: "0 18px 45px rgba(0,0,0,0.25)",
+    overflow: "hidden",
+    border: `1px solid ${BRAND.line}`,
+  },
+  modalHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "10px 12px",
+    borderBottom: `1px solid ${BRAND.line}`,
+    fontWeight: 900,
+    fontSize: 14,
+  },
+  modalClose: {
+    border: "1px solid #d1d5db",
+    background: "#f3f4f6",
+    borderRadius: 10,
+    padding: "6px 10px",
+    cursor: "pointer",
+    fontWeight: 800,
   },
 };
 
