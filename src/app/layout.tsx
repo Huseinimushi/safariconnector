@@ -28,25 +28,26 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {/* Global stylesheet served from /public */}
         <link rel="stylesheet" href="/sc-globals.css" />
       </head>
-      <body>
+      <body style={{ margin: 0 }}>
         {/* 🔐 Global auth (session available every page) */}
         <AuthProvider>
           {isAdminHost ? (
             <>
               <AdminHeader />
-              <main>{children}</main>
+              {/* Ensure content can shrink properly on mobile */}
+              <main style={{ minWidth: 0 }}>{children}</main>
             </>
           ) : isOperatorHost ? (
             <>
               {/* ✅ REMOVE OperatorHeader here to avoid double header
                   Operator layout already renders its own top bar */}
-              <main>{children}</main>
+              <main style={{ minWidth: 0 }}>{children}</main>
             </>
           ) : (
             <>
               {/* 🌍 Main public site */}
               <Nav />
-              <main>{children}</main>
+              <main style={{ minWidth: 0 }}>{children}</main>
               <Footer />
             </>
           )}
@@ -99,9 +100,12 @@ function AdminHeader() {
           alignItems: "center",
           justifyContent: "space-between",
           gap: 12,
+
+          // ✅ Responsive only: allow wrap on small screens
+          flexWrap: "wrap",
         }}
       >
-        <div>
+        <div style={{ minWidth: 0 }}>
           <div
             style={{
               fontSize: 14,
@@ -128,6 +132,10 @@ function AdminHeader() {
             display: "flex",
             alignItems: "center",
             gap: 14,
+
+            // ✅ Responsive only
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
           }}
         >
           <div
@@ -135,10 +143,13 @@ function AdminHeader() {
               fontSize: 12,
               opacity: 0.9,
               textAlign: "right",
+              minWidth: 0,
             }}
           >
             <div>Restricted access</div>
-            <div style={{ fontSize: 11, opacity: 0.85 }}>For internal marketplace operations only</div>
+            <div style={{ fontSize: 11, opacity: 0.85 }}>
+              For internal marketplace operations only
+            </div>
           </div>
 
           <MainSiteButton />
@@ -172,9 +183,12 @@ function OperatorHeader() {
           alignItems: "center",
           justifyContent: "space-between",
           gap: 12,
+
+          // ✅ Responsive only
+          flexWrap: "wrap",
         }}
       >
-        <div>
+        <div style={{ minWidth: 0 }}>
           <div
             style={{
               fontSize: 14,
@@ -201,6 +215,10 @@ function OperatorHeader() {
             display: "flex",
             alignItems: "center",
             gap: 14,
+
+            // ✅ Responsive only
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
           }}
         >
           <div
@@ -208,6 +226,7 @@ function OperatorHeader() {
               fontSize: 11,
               textAlign: "right",
               opacity: 0.9,
+              minWidth: 0,
             }}
           >
             <div>Manage trips, quotes & bookings</div>

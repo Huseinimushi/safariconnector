@@ -11,11 +11,7 @@ const BRAND = {
   border: "#E1E5ED",
 };
 
-export default function AdminPanelLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function AdminPanelLayout({ children }: { children: React.ReactNode }) {
   return (
     <div
       style={{
@@ -23,6 +19,7 @@ export default function AdminPanelLayout({
         backgroundColor: BRAND.bg,
         display: "flex",
         flexDirection: "column",
+        overflowX: "hidden",
       }}
     >
       {/* Top green system bar */}
@@ -42,9 +39,11 @@ export default function AdminPanelLayout({
             alignItems: "center",
             justifyContent: "space-between",
             gap: 16,
+            flexWrap: "wrap",
+            minWidth: 0,
           }}
         >
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div
               style={{
                 fontSize: 14,
@@ -55,9 +54,7 @@ export default function AdminPanelLayout({
             >
               SAFARI CONNECTOR
             </div>
-            <div style={{ fontSize: 12, opacity: 0.9 }}>
-              Admin control center
-            </div>
+            <div style={{ fontSize: 12, opacity: 0.9 }}>Admin control center</div>
           </div>
 
           <div
@@ -65,12 +62,11 @@ export default function AdminPanelLayout({
               textAlign: "right",
               fontSize: 11,
               lineHeight: 1.4,
+              minWidth: 0,
             }}
           >
             <div style={{ fontWeight: 600 }}>Restricted access</div>
-            <div style={{ opacity: 0.9 }}>
-              For internal marketplace operations only
-            </div>
+            <div style={{ opacity: 0.9 }}>For internal marketplace operations only</div>
           </div>
         </div>
       </div>
@@ -91,25 +87,13 @@ export default function AdminPanelLayout({
             alignItems: "center",
             justifyContent: "space-between",
             gap: 16,
+            flexWrap: "wrap",
+            minWidth: 0,
           }}
         >
-          <div>
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 800,
-                color: BRAND.ink,
-              }}
-            >
-              Admin workspace
-            </div>
-            <div
-              style={{
-                fontSize: 12,
-                color: BRAND.muted,
-                marginTop: 2,
-              }}
-            >
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: BRAND.ink }}>Admin workspace</div>
+            <div style={{ fontSize: 12, color: BRAND.muted, marginTop: 2 }}>
               Monitor operators, bookings, payments, quotes & support.
             </div>
           </div>
@@ -122,6 +106,7 @@ export default function AdminPanelLayout({
               flexWrap: "wrap",
               alignItems: "center",
               justifyContent: "flex-end",
+              minWidth: 0,
             }}
           >
             <HeaderLink href="/admin">Dashboard</HeaderLink>
@@ -132,13 +117,7 @@ export default function AdminPanelLayout({
             <HeaderLink href="/analytics">Analytics</HeaderLink>
 
             {/* Separator */}
-            <span
-              style={{
-                width: 1,
-                height: 26,
-                backgroundColor: BRAND.border,
-              }}
-            />
+            <span style={{ width: 1, height: 26, backgroundColor: BRAND.border }} />
 
             {/* Button to main public system */}
             <Link
@@ -166,9 +145,10 @@ export default function AdminPanelLayout({
         style={{
           flex: 1,
           padding: "20px 16px 32px",
+          minWidth: 0,
         }}
       >
-        <div style={{ maxWidth: 1240, margin: "0 auto" }}>{children}</div>
+        <div style={{ maxWidth: 1240, margin: "0 auto", minWidth: 0 }}>{children}</div>
       </main>
 
       {/* Footer just for admin panel */}
@@ -187,23 +167,14 @@ export default function AdminPanelLayout({
             justifyContent: "space-between",
             alignItems: "center",
             gap: 12,
+            flexWrap: "wrap",
+            minWidth: 0,
           }}
         >
-          <div
-            style={{
-              fontSize: 11,
-              color: BRAND.muted,
-            }}
-          >
+          <div style={{ fontSize: 11, color: BRAND.muted }}>
             Safari Connector · Admin panel · Internal use only
           </div>
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              fontSize: 11,
-            }}
-          >
+          <div style={{ display: "flex", gap: 12, fontSize: 11, flexWrap: "wrap" }}>
             <span style={{ color: "#9CA3AF" }}>v1 · Operational</span>
             <Link
               href="mailto:support@safariconnector.com"
@@ -211,6 +182,7 @@ export default function AdminPanelLayout({
                 color: "#065F46",
                 textDecoration: "none",
                 fontWeight: 600,
+                whiteSpace: "nowrap",
               }}
             >
               Contact platform support
@@ -222,13 +194,7 @@ export default function AdminPanelLayout({
   );
 }
 
-function HeaderLink({
-  href,
-  children,
-}: {
-  href: string;
-  children: React.ReactNode;
-}) {
+function HeaderLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
     <Link
       href={href}

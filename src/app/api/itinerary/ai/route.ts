@@ -1,22 +1,24 @@
 // src/app/api/itinerary/ai/route.ts
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 import { NextResponse } from "next/server";
-import { mistral } from "@/lib/mistral";
 
 type Msg = { role: "system" | "user" | "assistant"; content: string };
 
+function json(status: number, payload: any) {
+  return NextResponse.json(payload, { status });
+}
+
 function badRequest(message: string) {
-  return NextResponse.json({ error: message }, { status: 400 });
+  return json(400, { ok: false, error: message });
 }
 
 /**
- * Health / guidance endpoint.
- * Browsers may call GET by default; returning 405 is fine, but this is cleaner.
+ * Health endpoint
  */
 export function GET() {
-  return NextResponse.json(
-    { ok: true, message: "Use POST /api/itinerary/ai" },
-    { status: 200 }
-  );
+  return json(200, { ok: true, message: "Use POST /api/itinerary/ai" });
 }
 
 export async function POST(req: Request) {
@@ -42,15 +44,29 @@ export async function POST(req: Request) {
       return badRequest("`messages` is required and must be a non-empty array.");
     }
 
+    // Lazy import to avoid module-eval crashes that cause browser "fetch failed"
+    let mistral: any;
+    try {
+      const mod = await import("@/lib/mistral");
+      mistral = (mod as any).mistral;
+      if (!mistral) throw new Error("mistral client not exported from @/lib/mistral");
+    } catch (e: any) {
+      return json(500, {
+        ok: false,
+        error:
+          "Failed to initialize AI provider (mistral). Check server env + lib/mistral.",
+        detail: e?.message || String(e),
+      });
+    }
+
     const system: Msg = {
       role: "system",
       content:
-        `You are Safari Connector's itinerary assistant. ` +
-        `Generate practical safari itineraries in Tanzania/Kenya/Rwanda/Uganda. ` +
+        `You are Safari Connector AI Studio itinerary assistant. ` +
+        `Generate practical itineraries in Tanzania/Kenya/Rwanda/Uganda. ` +
         `Be structured, accurate, and avoid hallucinating park fees or exact pricing. ` +
         `If something is unknown, ask a clarifying question or provide ranges and assumptions. ` +
-        `Always produce output in the requested schema when provided.` +
-        `\n\nRules:\n- If schemaHint requests JSON, return valid JSON only.\n- Do not add markdown fences unless asked.\n`,
+        `If schemaHint requests JSON, return valid JSON ONLY (no markdown fences, no commentary).`,
     };
 
     const ctxBlock =
@@ -67,7 +83,7 @@ export async function POST(req: Request) {
       {
         role: "user",
         content:
-          `Task: Create / refine a safari itinerary based on the conversation.` +
+          `Task: Create / refine an itinerary based on the conversation.` +
           ctxBlock +
           schemaBlock,
       },
@@ -83,27 +99,24 @@ export async function POST(req: Request) {
       temperature: chosenTemp,
     });
 
-    // Mistral SDK may return content as string (or sometimes array parts).
     const content = res?.choices?.[0]?.message?.content as unknown;
     const text =
       typeof content === "string"
         ? content
         : Array.isArray(content)
-        ? content
-            .map((p: any) => (typeof p?.text === "string" ? p.text : ""))
-            .join("")
+        ? content.map((p: any) => (typeof p?.text === "string" ? p.text : "")).join("")
         : "";
 
-    return NextResponse.json({
-      ok: true,
-      provider: "mistral",
-      model: chosenModel,
-      text,
-    });
+    if (!text || !text.trim()) {
+      return json(502, { ok: false, error: "Empty model response." });
+    }
+
+    return json(200, { ok: true, provider: "mistral", model: chosenModel, text });
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: e?.message ?? "Mistral itinerary request failed." },
-      { status: 500 }
-    );
+    // Always return JSON so the browser never shows "fetch failed"
+    return json(500, {
+      ok: false,
+      error: e?.message ?? "Mistral itinerary request failed.",
+    });
   }
 }

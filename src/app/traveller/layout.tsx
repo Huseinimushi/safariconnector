@@ -56,6 +56,8 @@ export default function TravellerLayout({ children }: Props) {
           justifyContent: "center",
           fontSize: 14,
           color: "#4b5563",
+          padding: "0 16px",
+          textAlign: "center",
         }}
       >
         Checking traveller access…
@@ -67,5 +69,9 @@ export default function TravellerLayout({ children }: Props) {
     return null;
   }
 
-  return <>{children}</>;
+  return (
+    <div style={{ minWidth: 0, width: "100%", overflowX: "hidden" }}>
+      {children}
+    </div>
+  );
 }

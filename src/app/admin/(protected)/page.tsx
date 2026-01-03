@@ -37,7 +37,6 @@ type TripRow = {
 
 type BookingRow = {
   id: string;
-  // THESE MAY OR MAY NOT EXIST IN DB – WE TREAT THEM AS OPTIONAL
   booking_code?: string | null;
   traveller_name?: string | null;
   operator_company_name?: string | null;
@@ -123,51 +122,41 @@ function AdminDashboardContent() {
 
       try {
         const now = new Date();
-        const last24h = new Date(
-          now.getTime() - 24 * 60 * 60 * 1000
-        ).toISOString();
+        const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
 
-        const [
-          operatorsRes,
-          tripsRes,
-          bookingsRes,
-          paymentsRes,
-          quotesRes,
-        ] = await Promise.all([
-          supabase
-            .from("operators_view")
-            .select("id, name, country, created_at, status", {
-              count: "exact",
-            })
-            .order("created_at", { ascending: false })
-            .limit(5),
+        const [operatorsRes, tripsRes, bookingsRes, paymentsRes, quotesRes] =
+          await Promise.all([
+            supabase
+              .from("operators_view")
+              .select("id, name, country, created_at, status", { count: "exact" })
+              .order("created_at", { ascending: false })
+              .limit(5),
 
-          supabase
-            .from("trips")
-            .select("id, title, created_at", { count: "exact" })
-            .order("created_at", { ascending: false })
-            .limit(5),
+            supabase
+              .from("trips")
+              .select("id, title, created_at", { count: "exact" })
+              .order("created_at", { ascending: false })
+              .limit(5),
 
-          // SAFE: don't name columns explicitly, avoid "column X does not exist"
-          supabase
-            .from("bookings")
-            .select("*", { count: "exact" })
-            .order("created_at", { ascending: false })
-            .limit(5),
+            supabase
+              .from("bookings")
+              .select("*", { count: "exact" })
+              .order("created_at", { ascending: false })
+              .limit(5),
 
-          supabase
-            .from("payments")
-            .select("*", { count: "exact" })
-            .order("created_at", { ascending: false })
-            .limit(5),
+            supabase
+              .from("payments")
+              .select("*", { count: "exact" })
+              .order("created_at", { ascending: false })
+              .limit(5),
 
-          supabase
-            .from("quote_requests")
-            .select("*", { count: "exact" })
-            .gte("created_at", last24h)
-            .order("created_at", { ascending: false })
-            .limit(5),
-        ]);
+            supabase
+              .from("quote_requests")
+              .select("*", { count: "exact" })
+              .gte("created_at", last24h)
+              .order("created_at", { ascending: false })
+              .limit(5),
+          ]);
 
         if (operatorsRes.error) throw operatorsRes.error;
         if (tripsRes.error) throw tripsRes.error;
@@ -177,49 +166,26 @@ function AdminDashboardContent() {
 
         const opData = (operatorsRes.data || []) as OperatorRow[];
         setOperators(opData);
-        setOperatorsCount(
-          typeof operatorsRes.count === "number"
-            ? operatorsRes.count
-            : opData.length
-        );
+        setOperatorsCount(typeof operatorsRes.count === "number" ? operatorsRes.count : opData.length);
 
         const tripsData = (tripsRes.data || []) as TripRow[];
         setTrips(tripsData);
-        setTripsCount(
-          typeof tripsRes.count === "number"
-            ? tripsRes.count
-            : tripsData.length
-        );
+        setTripsCount(typeof tripsRes.count === "number" ? tripsRes.count : tripsData.length);
 
         const bookingsData = (bookingsRes.data || []) as BookingRow[];
         setBookings(bookingsData);
-        setBookingsCount(
-          typeof bookingsRes.count === "number"
-            ? bookingsRes.count
-            : bookingsData.length
-        );
+        setBookingsCount(typeof bookingsRes.count === "number" ? bookingsRes.count : bookingsData.length);
 
         const paymentsData = (paymentsRes.data || []) as PaymentRow[];
         setPayments(paymentsData);
-        setPendingPaymentsCount(
-          typeof paymentsRes.count === "number"
-            ? paymentsRes.count
-            : paymentsData.length
-        );
+        setPendingPaymentsCount(typeof paymentsRes.count === "number" ? paymentsRes.count : paymentsData.length);
 
         const quotesData = (quotesRes.data || []) as QuoteRequestRow[];
         setQuotes(quotesData);
-        setQuotesLast24hCount(
-          typeof quotesRes.count === "number"
-            ? quotesRes.count
-            : quotesData.length
-        );
+        setQuotesLast24hCount(typeof quotesRes.count === "number" ? quotesRes.count : quotesData.length);
       } catch (err: any) {
         console.error("admin dashboard load error:", err);
-        setError(
-          err?.message ||
-            "Failed to load admin dashboard data. Please try again."
-        );
+        setError(err?.message || "Failed to load admin dashboard data. Please try again.");
       } finally {
         setLoading(false);
       }
@@ -236,41 +202,13 @@ function AdminDashboardContent() {
 
   const NAV = useMemo(
     () => [
-      {
-        href: "/",
-        label: "Dashboard",
-        desc: "Overview & latest activity",
-      },
-      {
-        href: "/operators-overview",
-        label: "Operators overview",
-        desc: "Status, trips, approvals",
-      },
-      {
-        href: "/operators",
-        label: "Operators list",
-        desc: "Table view & actions",
-      },
-      {
-        href: "/bookings",
-        label: "Bookings",
-        desc: "Monitor booking flow",
-      },
-      {
-        href: "/payments",
-        label: "Payments",
-        desc: "Verification & payouts",
-      },
-      {
-        href: "/support",
-        label: "Support",
-        desc: "Inbox & ticket triage",
-      },
-      {
-        href: "/analytics",
-        label: "Analytics",
-        desc: "KPIs & trends",
-      },
+      { href: "/", label: "Dashboard", desc: "Overview & latest activity" },
+      { href: "/operators-overview", label: "Operators overview", desc: "Status, trips, approvals" },
+      { href: "/operators", label: "Operators list", desc: "Table view & actions" },
+      { href: "/bookings", label: "Bookings", desc: "Monitor booking flow" },
+      { href: "/payments", label: "Payments", desc: "Verification & payouts" },
+      { href: "/support", label: "Support", desc: "Inbox & ticket triage" },
+      { href: "/analytics", label: "Analytics", desc: "KPIs & trends" },
     ],
     []
   );
@@ -282,7 +220,64 @@ function AdminDashboardContent() {
         backgroundColor: BRAND.sand,
       }}
     >
+      {/* Responsive overrides only (UI/content unchanged) */}
+      <style jsx global>{`
+        /* Keep visuals the same; only change layout behavior on smaller screens */
+        .sc-admin-container {
+          width: 100%;
+        }
+
+        @media (max-width: 1024px) {
+          .sc-admin-layout {
+            grid-template-columns: 260px 1fr !important;
+          }
+        }
+
+        @media (max-width: 900px) {
+          .sc-admin-topbar {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+          }
+
+          .sc-admin-topbar-right {
+            width: 100% !important;
+            justify-content: space-between !important;
+          }
+
+          .sc-admin-layout {
+            grid-template-columns: 1fr !important;
+          }
+
+          .sc-admin-sidebar {
+            position: relative !important;
+            top: auto !important;
+          }
+        }
+
+        @media (max-width: 520px) {
+          .sc-admin-wrap {
+            padding: 18px 12px 28px !important;
+          }
+
+          .sc-admin-hero h1 {
+            font-size: 24px !important;
+          }
+
+          .sc-admin-row {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+          }
+
+          .sc-admin-row-right {
+            width: 100% !important;
+            display: flex !important;
+            justify-content: flex-start !important;
+          }
+        }
+      `}</style>
+
       <div
+        className="sc-admin-wrap sc-admin-container"
         style={{
           maxWidth: 1240,
           margin: "0 auto",
@@ -291,6 +286,7 @@ function AdminDashboardContent() {
       >
         {/* ======== TOP BAR ======== */}
         <div
+          className="sc-admin-topbar"
           style={{
             display: "flex",
             alignItems: "center",
@@ -333,7 +329,10 @@ function AdminDashboardContent() {
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
+            className="sc-admin-topbar-right"
+            style={{ display: "flex", alignItems: "center", gap: 10 }}
+          >
             <div
               style={{
                 display: "flex",
@@ -357,6 +356,7 @@ function AdminDashboardContent() {
 
         {/* ======== LAYOUT: SIDEBAR + CONTENT ======== */}
         <div
+          className="sc-admin-layout"
           style={{
             display: "grid",
             gridTemplateColumns: "280px 1fr",
@@ -366,6 +366,7 @@ function AdminDashboardContent() {
         >
           {/* SIDEBAR */}
           <aside
+            className="sc-admin-sidebar"
             style={{
               backgroundColor: BRAND.panel,
               border: `1px solid ${BRAND.border}`,
@@ -380,20 +381,14 @@ function AdminDashboardContent() {
               style={{
                 padding: "12px 12px 14px",
                 borderRadius: 16,
-                background:
-                  "linear-gradient(135deg, #1B4D3E 0%, #2E7D5E 100%)",
+                background: "linear-gradient(135deg, #1B4D3E 0%, #2E7D5E 100%)",
                 color: "#fff",
                 marginBottom: 12,
               }}
             >
-              <div style={{ fontSize: 14, fontWeight: 700 }}>
-                Safari Connector
-              </div>
-              <div
-                style={{ fontSize: 12, opacity: 0.9, marginTop: 4 }}
-              >
-                Admin access only. Use the links below to manage
-                platform operations.
+              <div style={{ fontSize: 14, fontWeight: 700 }}>Safari Connector</div>
+              <div style={{ fontSize: 12, opacity: 0.9, marginTop: 4 }}>
+                Admin access only. Use the links below to manage platform operations.
               </div>
             </div>
 
@@ -410,14 +405,10 @@ function AdminDashboardContent() {
               Navigation
             </div>
 
-            <div
-              style={{ display: "flex", flexDirection: "column", gap: 8 }}
-            >
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {NAV.map((item) => {
                 const active =
-                  item.href === "/"
-                    ? pathname === "/"
-                    : pathname?.startsWith(item.href);
+                  item.href === "/" ? pathname === "/" : pathname?.startsWith(item.href);
 
                 return (
                   <Link
@@ -427,12 +418,8 @@ function AdminDashboardContent() {
                       textDecoration: "none",
                       padding: "10px 10px",
                       borderRadius: 14,
-                      border: `1px solid ${
-                        active ? "rgba(27, 77, 62, 0.35)" : BRAND.border
-                      }`,
-                      backgroundColor: active
-                        ? "rgba(27, 77, 62, 0.08)"
-                        : BRAND.soft,
+                      border: `1px solid ${active ? "rgba(27, 77, 62, 0.35)" : BRAND.border}`,
+                      backgroundColor: active ? "rgba(27, 77, 62, 0.08)" : BRAND.soft,
                       display: "flex",
                       gap: 10,
                       alignItems: "flex-start",
@@ -444,9 +431,7 @@ function AdminDashboardContent() {
                         height: 10,
                         borderRadius: 999,
                         marginTop: 4,
-                        backgroundColor: active
-                          ? BRAND.primary
-                          : "#CBD5E1",
+                        backgroundColor: active ? BRAND.primary : "#CBD5E1",
                       }}
                     />
                     <div>
@@ -502,30 +487,12 @@ function AdminDashboardContent() {
                   padding: 12,
                 }}
               >
-                <SnapshotRow
-                  label="Total operators"
-                  value={operatorsCount.toLocaleString("en-US")}
-                />
-                <SnapshotRow
-                  label="Total trips"
-                  value={tripsCount.toLocaleString("en-US")}
-                />
-                <SnapshotRow
-                  label="Total bookings"
-                  value={bookingsCount.toLocaleString("en-US")}
-                />
-                <SnapshotRow
-                  label="Payments pending"
-                  value={pendingPaymentsCount.toLocaleString("en-US")}
-                />
-                <SnapshotRow
-                  label="Quotes (last 24h)"
-                  value={quotesLast24hCount.toLocaleString("en-US")}
-                />
-                <SnapshotRow
-                  label="Marketplace status"
-                  value={marketplaceStatus}
-                />
+                <SnapshotRow label="Total operators" value={operatorsCount.toLocaleString("en-US")} />
+                <SnapshotRow label="Total trips" value={tripsCount.toLocaleString("en-US")} />
+                <SnapshotRow label="Total bookings" value={bookingsCount.toLocaleString("en-US")} />
+                <SnapshotRow label="Payments pending" value={pendingPaymentsCount.toLocaleString("en-US")} />
+                <SnapshotRow label="Quotes (last 24h)" value={quotesLast24hCount.toLocaleString("en-US")} />
+                <SnapshotRow label="Marketplace status" value={marketplaceStatus} />
               </div>
             </div>
           </aside>
@@ -534,6 +501,7 @@ function AdminDashboardContent() {
           <main>
             {/* HERO */}
             <section
+              className="sc-admin-hero"
               style={{
                 backgroundColor: BRAND.panel,
                 border: `1px solid ${BRAND.border}`,
@@ -572,10 +540,8 @@ function AdminDashboardContent() {
                       color: "#4b5563",
                     }}
                   >
-                    Monitor operators, trips, bookings, quotes, payments
-                    and support activity across Safari Connector. Use this
-                    dashboard for high-level visibility, then drill down
-                    into detailed pages.
+                    Monitor operators, trips, bookings, quotes, payments and support activity across Safari Connector.
+                    Use this dashboard for high-level visibility, then drill down into detailed pages.
                   </p>
                 </div>
 
@@ -586,15 +552,9 @@ function AdminDashboardContent() {
                     flexWrap: "wrap",
                   }}
                 >
-                  <PrimaryAction href="/operators-overview">
-                    Operators overview
-                  </PrimaryAction>
-                  <SecondaryAction href="/payments">
-                    Payments
-                  </SecondaryAction>
-                  <SecondaryAction href="/bookings">
-                    Bookings
-                  </SecondaryAction>
+                  <PrimaryAction href="/operators-overview">Operators overview</PrimaryAction>
+                  <SecondaryAction href="/payments">Payments</SecondaryAction>
+                  <SecondaryAction href="/bookings">Bookings</SecondaryAction>
                 </div>
               </div>
 
@@ -659,8 +619,7 @@ function AdminDashboardContent() {
             <section
               style={{
                 display: "grid",
-                gridTemplateColumns:
-                  "repeat(auto-fit, minmax(360px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))",
                 gap: 12,
               }}
             >
@@ -674,54 +633,27 @@ function AdminDashboardContent() {
                 {loading ? (
                   <EmptyState>Loading operators…</EmptyState>
                 ) : operators.length === 0 ? (
-                  <EmptyState>
-                    No operators have been registered yet.
-                  </EmptyState>
+                  <EmptyState>No operators have been registered yet.</EmptyState>
                 ) : (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
+                  <div style={{ display: "flex", flexDirection: "column" }}>
                     {operators.map((op) => (
                       <Row key={op.id}>
                         <div>
-                          <div
-                            style={{
-                              fontSize: 14,
-                              fontWeight: 700,
-                              color: BRAND.ink,
-                            }}
-                          >
+                          <div style={{ fontSize: 14, fontWeight: 700, color: BRAND.ink }}>
                             {op.name || "Unnamed operator"}
                           </div>
-                          <div
-                            style={{
-                              fontSize: 12,
-                              color: BRAND.muted,
-                              marginTop: 2,
-                            }}
-                          >
+                          <div style={{ fontSize: 12, color: BRAND.muted, marginTop: 2 }}>
                             {op.country || "Country not set"}
                           </div>
-                          <div
-                            style={{
-                              fontSize: 11,
-                              color: "#9ca3af",
-                              marginTop: 2,
-                            }}
-                          >
+                          <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
                             {op.created_at
-                              ? `Joined ${new Date(
-                                  op.created_at
-                                ).toLocaleDateString()}`
+                              ? `Joined ${new Date(op.created_at).toLocaleDateString()}`
                               : "Joined date unknown"}
                           </div>
                         </div>
 
                         <Link
-                          href={`/admin/operators/${op.id}`}
+                          href={`/operators/${op.id}`}
                           style={{
                             fontSize: 12,
                             fontWeight: 700,
@@ -739,46 +671,22 @@ function AdminDashboardContent() {
               </PanelCard>
 
               {/* Latest trips */}
-              <PanelCard
-                title="Latest trips"
-                subtitle="New itineraries in the public marketplace."
-              >
+              <PanelCard title="Latest trips" subtitle="New itineraries in the public marketplace.">
                 {loading ? (
                   <EmptyState>Loading trips…</EmptyState>
                 ) : trips.length === 0 ? (
-                  <EmptyState>
-                    No trips have been listed yet.
-                  </EmptyState>
+                  <EmptyState>No trips have been listed yet.</EmptyState>
                 ) : (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
+                  <div style={{ display: "flex", flexDirection: "column" }}>
                     {trips.map((trip) => (
                       <Row key={trip.id}>
                         <div>
-                          <div
-                            style={{
-                              fontSize: 14,
-                              fontWeight: 700,
-                              color: BRAND.ink,
-                            }}
-                          >
+                          <div style={{ fontSize: 14, fontWeight: 700, color: BRAND.ink }}>
                             {trip.title || "Untitled trip"}
                           </div>
-                          <div
-                            style={{
-                              fontSize: 11,
-                              color: "#9ca3af",
-                              marginTop: 2,
-                            }}
-                          >
+                          <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
                             {trip.created_at
-                              ? `Created ${new Date(
-                                  trip.created_at
-                                ).toLocaleDateString()}`
+                              ? `Created ${new Date(trip.created_at).toLocaleDateString()}`
                               : "Created date not available"}
                           </div>
                         </div>
@@ -820,53 +728,29 @@ function AdminDashboardContent() {
                 >
                   Bookings
                 </div>
+
                 {loading ? (
                   <EmptyState>Loading bookings…</EmptyState>
                 ) : bookings.length === 0 ? (
                   <EmptyState>No bookings yet.</EmptyState>
                 ) : (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
+                  <div style={{ display: "flex", flexDirection: "column" }}>
                     {bookings.map((b) => (
                       <Row key={b.id}>
                         <div>
-                          <div
-                            style={{
-                              fontSize: 13,
-                              fontWeight: 700,
-                              color: BRAND.ink,
-                            }}
-                          >
+                          <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.ink }}>
                             {b.booking_code || "Booking"}
                           </div>
-                          <div
-                            style={{
-                              fontSize: 11,
-                              color: BRAND.muted,
-                              marginTop: 2,
-                            }}
-                          >
-                            {b.traveller_name || "Traveller n/a"} ·{" "}
-                            {b.operator_company_name || "Operator n/a"}
+                          <div style={{ fontSize: 11, color: BRAND.muted, marginTop: 2 }}>
+                            {b.traveller_name || "Traveller n/a"} · {b.operator_company_name || "Operator n/a"}
                           </div>
-                          <div
-                            style={{
-                              fontSize: 11,
-                              color: "#9ca3af",
-                              marginTop: 2,
-                            }}
-                          >
-                            {b.status || "Status n/a"} ·{" "}
-                            {b.created_at
-                              ? formatDateTime(b.created_at)
-                              : "Time n/a"}
+                          <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
+                            {b.status || "Status n/a"} · {b.created_at ? formatDateTime(b.created_at) : "Time n/a"}
                           </div>
                         </div>
+
                         <div
+                          className="sc-admin-row-right"
                           style={{
                             fontSize: 12,
                             fontWeight: 800,
@@ -874,10 +758,7 @@ function AdminDashboardContent() {
                             whiteSpace: "nowrap",
                           }}
                         >
-                          {formatCurrency(
-                            b.total_price,
-                            b.currency || "USD"
-                          )}
+                          {formatCurrency(b.total_price, b.currency || "USD")}
                         </div>
                       </Row>
                     ))}
@@ -897,52 +778,29 @@ function AdminDashboardContent() {
                 >
                   Payment verification
                 </div>
+
                 {loading ? (
                   <EmptyState>Loading payments…</EmptyState>
                 ) : payments.length === 0 ? (
                   <EmptyState>No payments waiting for verification.</EmptyState>
                 ) : (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
+                  <div style={{ display: "flex", flexDirection: "column" }}>
                     {payments.map((p) => (
                       <Row key={p.id}>
                         <div>
-                          <div
-                            style={{
-                              fontSize: 13,
-                              fontWeight: 700,
-                              color: BRAND.ink,
-                            }}
-                          >
+                          <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.ink }}>
                             {p.booking_code || "Booking"}
                           </div>
-                          <div
-                            style={{
-                              fontSize: 11,
-                              color: BRAND.muted,
-                              marginTop: 2,
-                            }}
-                          >
+                          <div style={{ fontSize: 11, color: BRAND.muted, marginTop: 2 }}>
                             {p.operator_company_name || "Operator n/a"}
                           </div>
-                          <div
-                            style={{
-                              fontSize: 11,
-                              color: "#9ca3af",
-                              marginTop: 2,
-                            }}
-                          >
-                            {p.payment_method || "Method n/a"} ·{" "}
-                            {p.created_at
-                              ? formatDateTime(p.created_at)
-                              : "Time n/a"}
+                          <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
+                            {p.payment_method || "Method n/a"} · {p.created_at ? formatDateTime(p.created_at) : "Time n/a"}
                           </div>
                         </div>
+
                         <div
+                          className="sc-admin-row-right"
                           style={{
                             fontSize: 12,
                             fontWeight: 800,
@@ -970,49 +828,24 @@ function AdminDashboardContent() {
                 >
                   Quote requests (24h)
                 </div>
+
                 {loading ? (
                   <EmptyState>Loading quotes…</EmptyState>
                 ) : quotes.length === 0 ? (
                   <EmptyState>No new quotes in the last 24 hours.</EmptyState>
                 ) : (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                    }}
-                  >
+                  <div style={{ display: "flex", flexDirection: "column" }}>
                     {quotes.map((q) => (
                       <Row key={q.id}>
                         <div>
-                          <div
-                            style={{
-                              fontSize: 13,
-                              fontWeight: 700,
-                              color: BRAND.ink,
-                            }}
-                          >
+                          <div style={{ fontSize: 13, fontWeight: 700, color: BRAND.ink }}>
                             {q.trip_title || "Trip enquiry"}
                           </div>
-                          <div
-                            style={{
-                              fontSize: 11,
-                              color: BRAND.muted,
-                              marginTop: 2,
-                            }}
-                          >
-                            {q.traveller_name || "Traveller n/a"} ·{" "}
-                            {q.pax ? `${q.pax} pax` : "pax n/a"}
+                          <div style={{ fontSize: 11, color: BRAND.muted, marginTop: 2 }}>
+                            {q.traveller_name || "Traveller n/a"} · {q.pax ? `${q.pax} pax` : "pax n/a"}
                           </div>
-                          <div
-                            style={{
-                              fontSize: 11,
-                              color: "#9ca3af",
-                              marginTop: 2,
-                            }}
-                          >
-                            {q.created_at
-                              ? formatDateTime(q.created_at)
-                              : "Time n/a"}
+                          <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 2 }}>
+                            {q.created_at ? formatDateTime(q.created_at) : "Time n/a"}
                           </div>
                         </div>
                       </Row>
@@ -1030,13 +863,7 @@ function AdminDashboardContent() {
 
 /* ================== UI PRIMITIVES ================== */
 
-function QuickLink({
-  href,
-  children,
-}: {
-  href: string;
-  children: React.ReactNode;
-}) {
+function QuickLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
     <Link
       href={href}
@@ -1056,13 +883,7 @@ function QuickLink({
   );
 }
 
-function PrimaryAction({
-  href,
-  children,
-}: {
-  href: string;
-  children: React.ReactNode;
-}) {
+function PrimaryAction({ href, children }: { href: string; children: React.ReactNode }) {
   return (
     <Link
       href={href}
@@ -1082,13 +903,7 @@ function PrimaryAction({
   );
 }
 
-function SecondaryAction({
-  href,
-  children,
-}: {
-  href: string;
-  children: React.ReactNode;
-}) {
+function SecondaryAction({ href, children }: { href: string; children: React.ReactNode }) {
   return (
     <Link
       href={href}
@@ -1123,9 +938,7 @@ function MetricCard(props: {
     <div
       style={{
         backgroundColor: isPrimary ? "rgba(27, 77, 62, 0.10)" : BRAND.panel,
-        border: `1px solid ${
-          isPrimary ? "rgba(27, 77, 62, 0.25)" : BRAND.border
-        }`,
+        border: `1px solid ${isPrimary ? "rgba(27, 77, 62, 0.25)" : BRAND.border}`,
         borderRadius: 20,
         padding: "16px 16px",
         boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
@@ -1155,9 +968,7 @@ function MetricCard(props: {
         {value}
       </div>
 
-      <div style={{ marginTop: 6, fontSize: 12, color: BRAND.muted }}>
-        {note}
-      </div>
+      <div style={{ marginTop: 6, fontSize: 12, color: BRAND.muted }}>{note}</div>
 
       <div style={{ marginTop: 12 }}>
         <Link
@@ -1205,16 +1016,8 @@ function PanelCard(props: {
         }}
       >
         <div>
-          <div
-            style={{ fontSize: 14, fontWeight: 900, color: BRAND.ink }}
-          >
-            {title}
-          </div>
-          <div
-            style={{ fontSize: 12, color: BRAND.muted, marginTop: 2 }}
-          >
-            {subtitle}
-          </div>
+          <div style={{ fontSize: 14, fontWeight: 900, color: BRAND.ink }}>{title}</div>
+          <div style={{ fontSize: 12, color: BRAND.muted, marginTop: 2 }}>{subtitle}</div>
         </div>
 
         {href && hrefLabel ? (
@@ -1233,14 +1036,7 @@ function PanelCard(props: {
         ) : null}
       </div>
 
-      <div
-        style={{
-          borderTop: `1px solid ${BRAND.border}`,
-          paddingTop: 10,
-        }}
-      >
-        {children}
-      </div>
+      <div style={{ borderTop: `1px solid ${BRAND.border}`, paddingTop: 10 }}>{children}</div>
     </div>
   );
 }
@@ -1248,6 +1044,7 @@ function PanelCard(props: {
 function Row({ children }: { children: React.ReactNode }) {
   return (
     <div
+      className="sc-admin-row"
       style={{
         display: "flex",
         justifyContent: "space-between",
@@ -1277,13 +1074,7 @@ function EmptyState({ children }: { children: React.ReactNode }) {
   );
 }
 
-function SnapshotRow({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function SnapshotRow({ label, value }: { label: string; value: string }) {
   return (
     <div
       style={{
