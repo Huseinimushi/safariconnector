@@ -428,26 +428,26 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
 
               <Link
                 href="/"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  borderRadius: 999,
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                borderRadius: 999,
                   padding: "6px 12px",
                   border: "1px solid rgba(255,255,255,0.35)",
                   background: "rgba(0,0,0,0.12)",
                   color: "#FFF",
                   textDecoration: "none",
                   fontSize: 12,
-                  fontWeight: 800,
-                  whiteSpace: "nowrap",
-                }}
-              >
-                Main website ->
-              </Link>
-            </div>
+                fontWeight: 800,
+                whiteSpace: "nowrap",
+              }}
+            >
+              Main website &gt;
+            </Link>
           </div>
-        </header>
+        </div>
+      </header>
 
         {/* PAGE CONTENT */}
         <main
