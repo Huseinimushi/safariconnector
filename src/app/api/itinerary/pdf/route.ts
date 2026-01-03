@@ -213,7 +213,7 @@ export async function POST(req: NextRequest) {
       color: BRAND.white,
     });
 
-    // Title (FIXED — no clipping)
+    // Title (FIXED - no clipping)
     const titleMaxW = contentW; // full width within margins
     const titleX = M;
     const titleY = height - 78;
@@ -353,7 +353,7 @@ export async function POST(req: NextRequest) {
         while (measure(fontBold, text, pillTextSize) > maxTextW && text.length > 10) {
           text = text.slice(0, -2);
         }
-        if (text !== item) text = text.trimEnd() + "…";
+        if (text !== item) text = text.trimEnd() + "...";
 
         page.drawText(text, {
           x: px + pillPadX,
@@ -370,20 +370,17 @@ export async function POST(req: NextRequest) {
     }
 
     // Day-by-day (new page if needed)
-    function ensureSpace(min: number) {
-      if (y < min) {
-        const np = pdf.addPage([595.28, 841.89]);
-        y = np.getSize().height - M;
-        // return new page
-        return np;
-      }
-      return page;
-    }
-
     let currentPage = page;
 
+    function ensureSpace(min: number) {
+      if (y < min) {
+        currentPage = pdf.addPage([595.28, 841.89]);
+        y = currentPage.getSize().height - M;
+      }
+    }
+
     if (activities.length) {
-      currentPage = ensureSpace(180);
+      ensureSpace(180);
       currentPage.drawText("Activities", { x: M, y, size: 16, font: fontBold, color: BRAND.ink });
       y -= 14;
       currentPage.drawLine({
@@ -409,7 +406,7 @@ export async function POST(req: NextRequest) {
 
         let cy = y;
         for (const ln of lines) {
-          currentPage.drawText(`• ${ln}`, {
+          currentPage.drawText(`- ${ln}`, {
             x: M + 2,
             y: cy,
             size: 12,
@@ -425,7 +422,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (days.length) {
-      currentPage = ensureSpace(200);
+      ensureSpace(200);
 
       currentPage.drawText("Day-by-day", { x: M, y, size: 16, font: fontBold, color: BRAND.ink });
       y -= 14;
@@ -531,7 +528,7 @@ export async function POST(req: NextRequest) {
         for (const it of trimmed) {
           const lines = wrapText(fontRegular, it, 11, colW - 34);
           for (const ln of lines) {
-            currentPage.drawText(`• ${ln}`, {
+            currentPage.drawText(`- ${ln}`, {
               x: x + 16,
               y: cy,
               size: 11,
