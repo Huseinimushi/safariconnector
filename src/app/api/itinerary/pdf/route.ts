@@ -27,7 +27,8 @@ type ItineraryPayload = {
     includes?: string[];
     excludes?: string[];
     details?: string;
-    activities?: string[];
+    activitiesParagraph?: string;
+    mealsAndAccommodation?: string[];
   };
   travellerName?: string;
   email?: string;
@@ -182,7 +183,10 @@ export async function POST(req: NextRequest) {
     const includes = Array.isArray(itinerary?.includes) ? itinerary!.includes! : [];
     const excludes = Array.isArray(itinerary?.excludes) ? itinerary!.excludes! : [];
     const details = safeText((itinerary as any)?.details || "", "");
-    const activities = Array.isArray((itinerary as any)?.activities) ? (itinerary as any)!.activities! : [];
+    const activitiesParagraph = safeText((itinerary as any)?.activitiesParagraph || "", "");
+    const mealsAndAccommodation = Array.isArray((itinerary as any)?.mealsAndAccommodation)
+      ? (itinerary as any)!.mealsAndAccommodation!
+      : [];
 
     const pdf = await PDFDocument.create();
 
@@ -379,8 +383,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    if (activities.length) {
-      ensureSpace(180);
+    if (activitiesParagraph) {
+      ensureSpace(140);
       currentPage.drawText("Activities", { x: M, y, size: 16, font: fontBold, color: BRAND.ink });
       y -= 14;
       currentPage.drawLine({
@@ -389,36 +393,61 @@ export async function POST(req: NextRequest) {
         thickness: 1,
         color: BRAND.line,
       });
-      y -= 12;
+      y -= 14;
+      y = drawParagraph(currentPage, fontRegular, activitiesParagraph, M, y, 12, contentW, 16, BRAND.ink);
+      y -= 8;
+    }
 
-      const maxItems = 14;
-      for (const item of activities.slice(0, maxItems)) {
-        const text = safeText(item, "");
-        if (!text) continue;
+    if (mealsAndAccommodation.length) {
+      ensureSpace(180);
 
-        const lines = wrapText(fontRegular, text, 12, contentW - 20);
-        const blockH = lines.length * 14 + 10;
+      const boxW = contentW;
+      const top = y;
 
-        if (y - blockH < 80) {
-          currentPage = pdf.addPage([595.28, 841.89]);
-          y = currentPage.getSize().height - M;
-        }
+      // Estimate height
+      let listLines = 0;
+      const maxItems = mealsAndAccommodation.slice(0, 14);
+      for (const it of maxItems) {
+        listLines += wrapText(fontRegular, safeText(it, ""), 11, boxW - 34).length;
+      }
+      const boxH = Math.max(140, 44 + listLines * 14 + 14);
 
-        let cy = y;
+      currentPage.drawRectangle({
+        x: M,
+        y: top - boxH,
+        width: boxW,
+        height: boxH,
+        color: BRAND.soft,
+        borderColor: BRAND.line,
+        borderWidth: 1,
+      });
+
+      currentPage.drawText("Meals & Accommodation", {
+        x: M + 14,
+        y: top - 22,
+        size: 12,
+        font: fontBold,
+        color: BRAND.ink,
+      });
+
+      let cy = top - 44;
+      for (const it of maxItems) {
+        const lines = wrapText(fontRegular, safeText(it, ""), 11, boxW - 34);
         for (const ln of lines) {
           currentPage.drawText(`- ${ln}`, {
-            x: M + 2,
+            x: M + 16,
             y: cy,
-            size: 12,
+            size: 11,
             font: fontRegular,
-            color: BRAND.ink,
+            color: BRAND.muted,
           });
           cy -= 14;
         }
-        y = cy - 4;
+        cy -= 2;
+        if (cy < top - boxH + 18) break;
       }
 
-      y -= 6;
+      y = top - boxH - 12;
     }
 
     if (days.length) {
