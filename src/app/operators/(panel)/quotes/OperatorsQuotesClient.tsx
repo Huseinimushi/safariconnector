@@ -827,11 +827,30 @@ export default function OperatorsQuotesClient() {
                 const hasQuote = !!(quote && isCurrentSelected && quote.quote_request_id === q.id);
                 const hasBooking = !!(booking && hasQuote && booking.quote_id === quote?.id);
 
-                const statusLabel = getTravellerStatusLabel(hasQuote, hasBooking);
+                const isOpened = isActive;
+                const statusLabel = isOpened ? "Opened" : getTravellerStatusLabel(hasQuote, hasBooking);
 
-                const statusBg = hasBooking ? "#ECFDF5" : hasQuote ? "#EFF6FF" : "#FEF3C7";
-                const statusColor = hasBooking ? "#166534" : hasQuote ? "#1D4ED8" : "#92400E";
-                const statusBorder = hasBooking ? "1px solid #BBF7D0" : hasQuote ? "1px solid #BFDBFE" : "1px solid #FDE68A";
+                const statusBg = isOpened
+                  ? "#E5E7EB"
+                  : hasBooking
+                  ? "#ECFDF5"
+                  : hasQuote
+                  ? "#EFF6FF"
+                  : "#FEF3C7";
+                const statusColor = isOpened
+                  ? "#374151"
+                  : hasBooking
+                  ? "#166534"
+                  : hasQuote
+                  ? "#1D4ED8"
+                  : "#92400E";
+                const statusBorder = isOpened
+                  ? "1px solid #CBD5E1"
+                  : hasBooking
+                  ? "1px solid #BBF7D0"
+                  : hasQuote
+                  ? "1px solid #BFDBFE"
+                  : "1px solid #FDE68A";
 
                 return (
                   <button
