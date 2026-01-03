@@ -18,10 +18,10 @@
 .navbar {
   display: flex;
   align-items: center;
-  padding: 10px 20px;
+  padding: 8px 16px;
   max-width: 1200px;
   margin: 0 auto;
-  gap: 12px;
+  gap: 10px;
   position: relative;
 }
 
@@ -38,7 +38,7 @@
 }
 
 .logoImage {
-  height: 54px;
+  height: 48px;
   width: auto;
   display: block;
 }
@@ -83,8 +83,8 @@
 }
 
 .iconBtn {
-  height: 40px;
-  width: 40px;
+  height: 36px;
+  width: 36px;
   border-radius: 999px;
   border: 1px solid rgba(27,77,62,.35);
   background: #ffffff;
@@ -96,8 +96,8 @@
 }
 
 .operatorBtn {
-  height: 40px;
-  width: 40px;
+  height: 36px;
+  width: 36px;
   border-radius: 999px;
   border: 1px solid #1b4d3e;
   background: #1b4d3e;
@@ -110,8 +110,8 @@
 
 .mobileToggle {
   display: none;
-  height: 40px;
-  width: 40px;
+  height: 34px;
+  width: 34px;
   border-radius: 8px;
   background: transparent;
   border: none;
@@ -193,13 +193,13 @@
   }
 
   .navbar {
-    padding: 12px 14px;
+    padding: 10px 14px;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
   }
 
   .logoImage {
-    height: 36px;
+    height: 34px;
   }
 
   .navCenter {
