@@ -13,6 +13,8 @@ const BRAND = {
   borderSoft: "#E1E5ED",
 };
 
+const OPENED_ENQUIRIES_KEY = "safariconnector_opened_enquiries";
+
 type OperatorPanelProps = { children: ReactNode };
 
 type OperatorRow = {
@@ -23,52 +25,58 @@ type OperatorRow = {
   status?: string | null;
 };
 
+const normalizeStatus = (value?: string | null) => (value || "").toLowerCase();
+
 export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
   const pathname = usePathname();
   const router = useRouter();
 
-  const [companyName, setCompanyName] = useState<string>("—");
+  const [companyName, setCompanyName] = useState<string>("");
   const [loadingCompany, setLoadingCompany] = useState(true);
+  const [operatorId, setOperatorId] = useState<string | null>(null);
 
-  // ✅ Responsive state
   const [isMobile, setIsMobile] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
 
+  const [enquiriesNewCount, setEnquiriesNewCount] = useState(0);
+  const [messagesUnreadCount, setMessagesUnreadCount] = useState(0);
+  const [quotesPendingCount, setQuotesPendingCount] = useState(0);
+  const [bookingsPendingCount, setBookingsPendingCount] = useState(0);
+
+  // Detect mobile
   useEffect(() => {
-    // Detect mobile using matchMedia (no Tailwind needed)
     const mq = window.matchMedia("(max-width: 900px)");
     const apply = () => setIsMobile(mq.matches);
-
     apply();
     mq.addEventListener?.("change", apply);
-
     return () => mq.removeEventListener?.("change", apply);
   }, []);
 
-  // Close drawer on route change (mobile)
+  // Close drawer on navigation (mobile)
   useEffect(() => {
     if (isMobile) setNavOpen(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
+  // Load operator profile
   useEffect(() => {
     let alive = true;
 
     const loadCompany = async () => {
       setLoadingCompany(true);
-
       try {
         const { data: userRes } = await supabase.auth.getUser();
         const uid = userRes?.user?.id;
-
         if (!uid) {
-          if (!alive) return;
-          setCompanyName("—");
-          setLoadingCompany(false);
+          if (alive) {
+            setCompanyName("");
+            setLoadingCompany(false);
+          }
           return;
         }
 
-        // operators_view first
+        let operatorRow: OperatorRow | null = null;
+
         const { data: opView, error: opViewErr } = await supabase
           .from("operators_view")
           .select("id,user_id,company_name,name,status")
@@ -76,38 +84,30 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
           .maybeSingle();
 
         if (!opViewErr && opView) {
-          if (!alive) return;
-          setCompanyName(opView.company_name || opView.name || "—");
-          setLoadingCompany(false);
-          return;
+          operatorRow = opView as OperatorRow;
+        } else {
+          const { data: op } = await supabase
+            .from("operators")
+            .select("id,user_id,company_name,name,status")
+            .eq("user_id", uid)
+            .maybeSingle();
+          if (op) operatorRow = op as OperatorRow;
         }
 
-        // fallback operators table
-        const { data: op, error: opErr } = await supabase
-          .from("operators")
-          .select("id,user_id,company_name,name,status")
-          .eq("user_id", uid)
-          .maybeSingle();
-
-        if (!alive) return;
-
-        if (opErr) {
-          setCompanyName("—");
+        if (alive) {
+          setCompanyName(operatorRow?.company_name || operatorRow?.name || "");
+          setOperatorId(operatorRow?.id || null);
           setLoadingCompany(false);
-          return;
         }
-
-        setCompanyName(op?.company_name || op?.name || "—");
-        setLoadingCompany(false);
       } catch {
-        if (!alive) return;
-        setCompanyName("—");
-        setLoadingCompany(false);
+        if (alive) {
+          setCompanyName("");
+          setLoadingCompany(false);
+        }
       }
     };
 
     loadCompany();
-
     return () => {
       alive = false;
     };
@@ -118,18 +118,103 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
     router.replace("/login");
   };
 
+  // Badge counts
+  useEffect(() => {
+    if (!operatorId) return;
+
+    const loadCounts = async () => {
+      try {
+        const openedMap = (() => {
+          if (typeof window === "undefined") return {} as Record<string, boolean>;
+          try {
+            const raw = window.localStorage.getItem(OPENED_ENQUIRIES_KEY);
+            const parsed = raw ? JSON.parse(raw) : {};
+            return parsed && typeof parsed === "object" ? (parsed as Record<string, boolean>) : {};
+          } catch {
+            return {} as Record<string, boolean>;
+          }
+        })();
+
+        const [enquiriesRes, inboxRes, quotesRes, bookingsRes] = await Promise.all([
+          supabase.from("quote_requests").select("id").eq("operator_id", operatorId),
+          supabase.from("operator_inbox_view").select("id,has_unread").eq("operator_id", operatorId),
+          supabase.from("operator_quotes").select("id,status").eq("operator_id", operatorId),
+          supabase.from("bookings").select("id,status").eq("operator_id", operatorId),
+        ]);
+
+        if (!enquiriesRes.error && enquiriesRes.data) {
+          const rows = enquiriesRes.data as Array<{ id: number }>;
+          const newOnes = rows.filter((r) => !openedMap[String(r.id)]).length;
+          setEnquiriesNewCount(newOnes);
+        } else {
+          setEnquiriesNewCount(0);
+        }
+
+        if (!inboxRes.error && inboxRes.data) {
+          const rows = inboxRes.data as Array<{ has_unread?: boolean | null }>;
+          const unread = rows.filter((r) => !!r.has_unread).length;
+          setMessagesUnreadCount(unread);
+        } else {
+          setMessagesUnreadCount(0);
+        }
+
+        if (!quotesRes.error && quotesRes.data) {
+          const rows = quotesRes.data as Array<{ status: string | null }>;
+          const pending = rows.filter((r) => {
+            const s = normalizeStatus(r.status);
+            return s === "pending" || s === "draft";
+          }).length;
+          setQuotesPendingCount(pending);
+        } else {
+          setQuotesPendingCount(0);
+        }
+
+        if (!bookingsRes.error && bookingsRes.data) {
+          const rows = bookingsRes.data as Array<{ status: string | null }>;
+          const pending = rows.filter((r) => normalizeStatus(r.status) === "pending").length;
+          setBookingsPendingCount(pending);
+        } else {
+          setBookingsPendingCount(0);
+        }
+      } catch (err) {
+        console.warn("operator badge counts error:", err);
+        setEnquiriesNewCount(0);
+        setMessagesUnreadCount(0);
+        setQuotesPendingCount(0);
+        setBookingsPendingCount(0);
+      }
+    };
+
+    loadCounts();
+  }, [operatorId]);
+
   const NAV = useMemo(
     () => [
-      { href: "/dashboard", label: "Dashboard", icon: "🏠" },
-      { href: "/trips", label: "Trips", icon: "🗺️" },
-      { href: "/bookings", label: "Bookings", icon: "📑" },
-      { href: "/enquiries", label: "Enquiries", icon: "📬" },
-      { href: "/quotes", label: "Quotes", icon: "💬" },
-      { href: "/inbox", label: "Messages", icon: "✉️" },
-      { href: "/profile", label: "Profile", icon: "👤" },
+      { href: "/dashboard", label: "Dashboard", icon: "D" },
+      { href: "/trips", label: "Trips", icon: "T" },
+      { href: "/bookings", label: "Bookings", icon: "B" },
+      { href: "/enquiries", label: "Enquiries", icon: "E" },
+      { href: "/quotes", label: "Quotes", icon: "Q" },
+      { href: "/inbox", label: "Messages", icon: "M" },
+      { href: "/profile", label: "Profile", icon: "P" },
     ],
     []
   );
+
+  const getBadgeCount = (label: string) => {
+    switch (label) {
+      case "Enquiries":
+        return enquiriesNewCount;
+      case "Messages":
+        return messagesUnreadCount;
+      case "Quotes":
+        return quotesPendingCount;
+      case "Bookings":
+        return bookingsPendingCount;
+      default:
+        return 0;
+    }
+  };
 
   const isActive = (href: string) => {
     if (!pathname) return false;
@@ -148,8 +233,6 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
         alignItems: "center",
         gap: 14,
         flexShrink: 0,
-
-        // ✅ Mobile drawer positioning (desktop unchanged)
         position: isMobile ? "fixed" : "relative",
         top: 0,
         left: 0,
@@ -163,6 +246,7 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
     >
       {NAV.map((item) => {
         const active = isActive(item.href);
+        const badge = getBadgeCount(item.label);
 
         return (
           <Link
@@ -177,6 +261,7 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
               alignItems: "center",
               gap: 4,
               padding: "4px 0",
+              position: "relative",
             }}
           >
             <div
@@ -187,11 +272,36 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: 22,
+                fontSize: 16,
+                fontWeight: 800,
                 border: active ? "2px solid #F9FAFB" : "1px solid rgba(255,255,255,0.35)",
+                position: "relative",
               }}
             >
               {item.icon}
+              {badge > 0 ? (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: -6,
+                    right: -6,
+                    minWidth: 18,
+                    height: 18,
+                    borderRadius: 999,
+                    background: "#F97316",
+                    color: "#FFF",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "0 5px",
+                    boxShadow: "0 2px 6px rgba(0,0,0,0.25)",
+                  }}
+                >
+                  {badge}
+                </span>
+              ) : null}
             </div>
             <div
               style={{
@@ -206,76 +316,50 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
           </Link>
         );
       })}
-
-      {/* COMPANY NAME FOOTER (BOTTOM LEFT) */}
-      <div
-        style={{
-          marginTop: "auto",
-          width: "100%",
-          padding: "10px 6px 8px",
-          textAlign: "center",
-          borderTop: "1px solid rgba(255,255,255,0.25)",
-        }}
-      >
-        <div
-          style={{
-            fontSize: 9,
-            textTransform: "uppercase",
-            letterSpacing: "0.16em",
-            color: "rgba(226,232,240,0.9)",
-            marginBottom: 6,
-          }}
-        >
-          Your company
-        </div>
-
-        <div
-          style={{
-            fontSize: 11,
-            fontWeight: 800,
-            color: "#F9FAFB",
-            lineHeight: 1.2,
-            wordBreak: "break-word",
-            minHeight: 28,
-          }}
-        >
-          {loadingCompany ? "Loading…" : companyName || "—"}
-        </div>
-
-        <div style={{ fontSize: 10, color: "rgba(226,232,240,0.65)", marginTop: 4 }}>—</div>
-      </div>
-
+      <div style={{ flex: 1 }} />
       <button
         onClick={handleLogout}
-        title="Logout"
         style={{
-          width: 40,
-          height: 40,
-          borderRadius: 999,
-          border: "1px solid rgba(255,255,255,0.3)",
-          color: "#FCA5A5",
-          background: "transparent",
-          fontSize: 18,
+          marginBottom: 8,
+          background: "rgba(0,0,0,0.16)",
+          border: "1px solid rgba(255,255,255,0.35)",
+          color: "#FFF",
+          borderRadius: 12,
+          padding: "8px 10px",
           cursor: "pointer",
-          marginTop: 10,
+          width: "88%",
+          fontSize: 12,
+          fontWeight: 700,
         }}
       >
-        ⏏
+        Logout
       </button>
+      <div style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", textAlign: "center", padding: "0 6px 6px" }}>
+        {loadingCompany ? "Loading operator..." : companyName || "Operator workspace"}
+      </div>
     </aside>
   );
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", background: BRAND.bg }}>
-      {/* ✅ Mobile backdrop */}
-      {isMobile && navOpen ? (
+    <div
+      style={{
+        display: "flex",
+        minHeight: "100vh",
+        background: BRAND.bg,
+      }}
+    >
+      {/* MOBILE BACKDROP */}
+      {isMobile ? (
         <div
           onClick={() => setNavOpen(false)}
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            zIndex: 55,
+            background: "rgba(0,0,0,0.3)",
+            opacity: navOpen ? 1 : 0,
+            visibility: navOpen ? "visible" : "hidden",
+            transition: "opacity 180ms ease, visibility 180ms ease",
+            zIndex: 50,
           }}
           aria-hidden="true"
         />
@@ -301,11 +385,10 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
               alignItems: "center",
               justifyContent: "space-between",
               gap: 12,
-              flexWrap: "wrap", // ✅ responsive wrap only
+              flexWrap: "wrap",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-              {/* ✅ Mobile menu button (desktop hidden) */}
               {isMobile ? (
                 <button
                   onClick={() => setNavOpen(true)}
@@ -322,7 +405,7 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
                     flexShrink: 0,
                   }}
                 >
-                  ☰
+                  Menu
                 </button>
               ) : null}
 
@@ -337,7 +420,7 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
                 display: "flex",
                 alignItems: "center",
                 gap: 12,
-                flexWrap: "wrap", // ✅ responsive
+                flexWrap: "wrap",
                 justifyContent: "flex-end",
               }}
             >
@@ -360,7 +443,7 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
                   whiteSpace: "nowrap",
                 }}
               >
-                Main website →
+                Main website ->
               </Link>
             </div>
           </div>
@@ -387,7 +470,7 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
             display: "flex",
             justifyContent: "space-between",
             gap: 10,
-            flexWrap: "wrap", // ✅ responsive
+            flexWrap: "wrap",
           }}
         >
           <span>Operator workspace</span>
