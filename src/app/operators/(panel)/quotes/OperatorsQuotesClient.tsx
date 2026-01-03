@@ -1071,19 +1071,60 @@ export default function OperatorsQuotesClient() {
               >
                 {selectedEnquiry.note && (
                   <div style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 3 }}>Traveller’s original request</div>
+                    <div style={{ fontSize: 11, color: "#6B7280", marginBottom: 3 }}>
+                      Traveller&apos;s original request
+                    </div>
                     <div
                       style={{
                         backgroundColor: "#EFF6FF",
                         borderRadius: 12,
-                        padding: 10,
+                        padding: 12,
                         fontSize: 13,
-                        lineHeight: 1.5,
+                        lineHeight: 1.6,
                         border: "1px solid #BFDBFE",
                         whiteSpace: "pre-line",
                       }}
                     >
-                      {selectedEnquiry.note}
+                      {(() => {
+                        try {
+                          const parsed = JSON.parse(selectedEnquiry.note);
+                          return (
+                            <div style={{ display: "grid", gap: 6 }}>
+                              {parsed.summary && (
+                                <p style={{ margin: 0, color: "#0f172a", fontWeight: 600 }}>{parsed.summary}</p>
+                              )}
+                              <div style={{ display: "grid", gap: 3, fontSize: 12, color: "#334155" }}>
+                                {parsed.destination && (
+                                  <div>
+                                    <strong style={{ color: "#0f172a" }}>Destinations: </strong>
+                                    <span>{parsed.destination}</span>
+                                  </div>
+                                )}
+                                {parsed.daysCount && (
+                                  <div>
+                                    <strong style={{ color: "#0f172a" }}>Days: </strong>
+                                    <span>{parsed.daysCount}</span>
+                                  </div>
+                                )}
+                                {parsed.travelDate && (
+                                  <div>
+                                    <strong style={{ color: "#0f172a" }}>Preferred dates: </strong>
+                                    <span>{parsed.travelDate}</span>
+                                  </div>
+                                )}
+                                {parsed.budgetRange && (
+                                  <div>
+                                    <strong style={{ color: "#0f172a" }}>Budget: </strong>
+                                    <span>{parsed.budgetRange}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        } catch {
+                          return selectedEnquiry.note;
+                        }
+                      })()}
                     </div>
                   </div>
                 )}
