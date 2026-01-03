@@ -388,6 +388,7 @@ export async function POST(req: NextRequest) {
         currentPage = pdf.addPage([595.28, 841.89]);
         y = currentPage.getSize().height - M;
       }
+      return currentPage;
     };
 
     if (activitiesParagraph) {
@@ -468,7 +469,7 @@ export async function POST(req: NextRequest) {
         thickness: 1,
         color: BRAND.line,
       });
-      y -= 14;
+      y -= 16;
 
       for (let i = 0; i < days.length; i++) {
         const raw = days[i] as any;
@@ -477,19 +478,21 @@ export async function POST(req: NextRequest) {
         const meals = raw?.meals ? safeText(raw.meals, "") : "";
         const accommodation = raw?.accommodation ? safeText(raw.accommodation, "") : "";
 
-        if (!activities) continue;
+        if (!activities && !meals && !accommodation) continue;
 
-        // Estimate height needed (rough wrap count)
-        const lines = wrapText(fontRegular, activities, 12, contentW - 28);
-        const mealsLines = meals ? wrapText(fontRegular, `Meals: ${meals}`, 11, contentW - 28) : [];
-        const accLines = accommodation
-          ? wrapText(fontRegular, `Accommodation: ${accommodation}`, 11, contentW - 28)
-          : [];
-        const blockH = 18 + lines.length * 16 + (mealsLines.length + accLines.length) * 14 + 28;
+        const activityLines = wrapText(fontRegular, activities || "Details to follow.", 12, contentW - 28);
+        const mealsLines = meals ? wrapText(fontRegular, meals, 11, contentW - 42) : [];
+        const accLines = accommodation ? wrapText(fontRegular, accommodation, 11, contentW - 42) : [];
+
+        const activityH = 18 + activityLines.length * 16;
+        const mealsH = mealsLines.length ? 18 + mealsLines.length * 14 : 0;
+        const accH = accLines.length ? 18 + accLines.length * 14 : 0;
+        const blockH = 28 + activityH + mealsH + accH + 12;
 
         if (y - blockH < 80) {
           currentPage = pdf.addPage([595.28, 841.89]);
           y = currentPage.getSize().height - M;
+          ensureSpace(200);
         }
 
         // Card
@@ -512,7 +515,16 @@ export async function POST(req: NextRequest) {
         });
 
         let ty = y - 44;
-        for (const ln of lines) {
+        // Activities label
+        currentPage.drawText("Activities of the Day:", {
+          x: M + 14,
+          y: ty,
+          size: 11.5,
+          font: fontBold,
+          color: BRAND.ink,
+        });
+        ty -= 16;
+        for (const ln of activityLines) {
           currentPage.drawText(ln, {
             x: M + 14,
             y: ty,
@@ -523,34 +535,53 @@ export async function POST(req: NextRequest) {
           ty -= 16;
         }
 
-        const metaStart = ty + 8;
-        let metaY = metaStart;
+        // Meals
         if (mealsLines.length) {
+          ty -= 4;
+          currentPage.drawText("Meals:", {
+            x: M + 14,
+            y: ty,
+            size: 11,
+            font: fontBold,
+            color: BRAND.ink,
+          });
+          ty -= 14;
           for (const ln of mealsLines) {
             currentPage.drawText(ln, {
-              x: M + 14,
-              y: metaY,
+              x: M + 26,
+              y: ty,
               size: 11,
               font: fontRegular,
-              color: BRAND.ink,
+              color: BRAND.muted,
             });
-            metaY -= 14;
-          }
-        }
-        if (accLines.length) {
-          for (const ln of accLines) {
-            currentPage.drawText(ln, {
-              x: M + 14,
-              y: metaY,
-              size: 11,
-              font: fontRegular,
-              color: BRAND.ink,
-            });
-            metaY -= 14;
+            ty -= 14;
           }
         }
 
-        y = y - blockH - 12;
+        // Accommodation
+        if (accLines.length) {
+          ty -= 4;
+          currentPage.drawText("Accommodation:", {
+            x: M + 14,
+            y: ty,
+            size: 11,
+            font: fontBold,
+            color: BRAND.ink,
+          });
+          ty -= 14;
+          for (const ln of accLines) {
+            currentPage.drawText(ln, {
+              x: M + 26,
+              y: ty,
+              size: 11,
+              font: fontRegular,
+              color: BRAND.muted,
+            });
+            ty -= 14;
+          }
+        }
+
+        y = y - blockH - 10;
       }
     }
 

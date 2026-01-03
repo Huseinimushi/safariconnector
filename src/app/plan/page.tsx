@@ -197,7 +197,8 @@ function normalizeResult(
   parsed: ItineraryResult,
   intentTripType: "day_trip" | "multi_day",
   fallbackDestination: string,
-  selectedStyle: string
+  selectedStyle: string,
+  requestedDays: number
 ) {
   const safe: ItineraryResult = {
     title: String(parsed?.title || "").trim(),
@@ -247,8 +248,9 @@ function normalizeResult(
     safe.days = [first];
     safe.daysCount = 1;
   } else {
-    const requested = clampInt(Number(parsed?.daysCount || 0) || safe.days.length || 0, 1, 30);
-    const target = Math.max(requested, safe.days.length);
+    const requested = clampInt(Number(requestedDays || 0), 1, 30);
+    const aiDays = clampInt(Number(parsed?.daysCount || 0), 0, 30);
+    const target = Math.max(requested, aiDays, safe.days.length || 0);
     if (safe.days.length < target) {
       const fillerActivity = safe.activitiesParagraph || safe.summary || "To be planned for this day.";
       for (let i = safe.days.length; i < target; i++) {
@@ -475,7 +477,7 @@ export default function PlanPage() {
         throw new Error("AI output format invalid. Please try again.");
       }
 
-      const normalized = normalizeResult(parsed, intent.tripType, destination, travelStyle);
+      const normalized = normalizeResult(parsed, intent.tripType, destination, travelStyle, days);
       setResult(normalized);
 
       setLog((p) => [...p, { role: "assistant", content: `Generated: ${normalized.title}` }]);
