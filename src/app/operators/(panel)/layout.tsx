@@ -42,6 +42,7 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
   const [messagesUnreadCount, setMessagesUnreadCount] = useState(0);
   const [quotesPendingCount, setQuotesPendingCount] = useState(0);
   const [bookingsPendingCount, setBookingsPendingCount] = useState(0);
+  const [countsLoading, setCountsLoading] = useState(false);
 
   // Detect mobile
   useEffect(() => {
@@ -122,7 +123,13 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
   useEffect(() => {
     if (!operatorId) return;
 
+    let cancelled = false;
+    let refreshing = false;
+
     const loadCounts = async () => {
+      if (refreshing) return;
+      refreshing = true;
+      setCountsLoading(true);
       try {
         const openedMap = (() => {
           if (typeof window === "undefined") return {} as Record<string, boolean>;
@@ -142,50 +149,81 @@ export default function OperatorPanelLayout({ children }: OperatorPanelProps) {
           supabase.from("bookings").select("id,status").eq("operator_id", operatorId),
         ]);
 
-        if (!enquiriesRes.error && enquiriesRes.data) {
+        if (!cancelled && !enquiriesRes.error && enquiriesRes.data) {
           const rows = enquiriesRes.data as Array<{ id: number }>;
           const newOnes = rows.filter((r) => !openedMap[String(r.id)]).length;
           setEnquiriesNewCount(newOnes);
-        } else {
+        } else if (!cancelled) {
           setEnquiriesNewCount(0);
         }
 
-        if (!inboxRes.error && inboxRes.data) {
+        if (!cancelled && !inboxRes.error && inboxRes.data) {
           const rows = inboxRes.data as Array<{ has_unread?: boolean | null }>;
           const unread = rows.filter((r) => !!r.has_unread).length;
           setMessagesUnreadCount(unread);
-        } else {
+        } else if (!cancelled) {
           setMessagesUnreadCount(0);
         }
 
-        if (!quotesRes.error && quotesRes.data) {
+        if (!cancelled && !quotesRes.error && quotesRes.data) {
           const rows = quotesRes.data as Array<{ status: string | null }>;
           const pending = rows.filter((r) => {
             const s = normalizeStatus(r.status);
             return s === "pending" || s === "draft";
           }).length;
           setQuotesPendingCount(pending);
-        } else {
+        } else if (!cancelled) {
           setQuotesPendingCount(0);
         }
 
-        if (!bookingsRes.error && bookingsRes.data) {
+        if (!cancelled && !bookingsRes.error && bookingsRes.data) {
           const rows = bookingsRes.data as Array<{ status: string | null }>;
           const pending = rows.filter((r) => normalizeStatus(r.status) === "pending").length;
           setBookingsPendingCount(pending);
-        } else {
+        } else if (!cancelled) {
           setBookingsPendingCount(0);
         }
       } catch (err) {
         console.warn("operator badge counts error:", err);
-        setEnquiriesNewCount(0);
-        setMessagesUnreadCount(0);
-        setQuotesPendingCount(0);
-        setBookingsPendingCount(0);
+        if (!cancelled) {
+          setEnquiriesNewCount(0);
+          setMessagesUnreadCount(0);
+          setQuotesPendingCount(0);
+          setBookingsPendingCount(0);
+        }
+      } finally {
+        refreshing = false;
+        if (!cancelled) setCountsLoading(false);
       }
     };
 
     loadCounts();
+    const interval = setInterval(loadCounts, 30000);
+
+    const channel = supabase
+      .channel("operator-counts")
+      .on("postgres_changes", { event: "*", schema: "public", table: "quote_requests" }, (payload) => {
+        if ((payload.new as any)?.operator_id !== operatorId) return;
+        loadCounts();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "operator_inbox_view" }, () => {
+        loadCounts();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "operator_quotes" }, (payload) => {
+        if ((payload.new as any)?.operator_id !== operatorId) return;
+        loadCounts();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, (payload) => {
+        if ((payload.new as any)?.operator_id !== operatorId) return;
+        loadCounts();
+      })
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
   }, [operatorId]);
 
   const NAV = useMemo(
