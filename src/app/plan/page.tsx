@@ -222,11 +222,16 @@ function normalizeResult(
   const mappedDays: DayPlan[] = Array.isArray(safe.days)
     ? safe.days
         .map((d, idx) => {
-          const title = String((d as any)?.title || "").trim() || `Day ${idx + 1}`;
+          let baseTitle = String((d as any)?.title || "").trim();
+          const title = baseTitle
+            ? baseTitle.match(/^day\s+\d+/i)
+              ? baseTitle
+              : `Day ${idx + 1}: ${baseTitle}`
+            : `Day ${idx + 1}`;
           const activities = String((d as any)?.activities || d || "").trim();
           const meals = (d as any)?.meals ?? null;
           const accommodation = (d as any)?.accommodation ?? null;
-          if (!activities) return null;
+          if (!activities) return { title, activities: "", meals, accommodation };
           return { title, activities, meals, accommodation };
         })
         .filter(Boolean) as DayPlan[]
@@ -236,15 +241,29 @@ function normalizeResult(
   if (!safe.style && selectedStyle) safe.style = selectedStyle;
 
   if (intentTripType === "day_trip") {
-    const first = safe.days[0] || "Morning pickup • activities • lunch • return by evening (same-day).";
+    const first =
+      safe.days[0] ||
+      { title: "Day 1", activities: "Morning pickup • activities • lunch • return by evening (same-day)." };
     safe.days = [first];
     safe.daysCount = 1;
   } else {
-    if (safe.days.length > 0) safe.daysCount = safe.days.length;
-    if (!safe.daysCount || safe.daysCount < 1) safe.daysCount = Math.max(1, safe.days.length || 1);
+    const requested = clampInt(Number(parsed?.daysCount || 0) || safe.days.length || 0, 1, 30);
+    const target = Math.max(requested, safe.days.length);
+    if (safe.days.length < target) {
+      const fillerActivity = safe.activitiesParagraph || safe.summary || "To be planned for this day.";
+      for (let i = safe.days.length; i < target; i++) {
+        safe.days.push({
+          title: `Day ${i + 1}`,
+          activities: fillerActivity,
+          meals: null,
+          accommodation: null,
+        });
+      }
+    }
+    safe.daysCount = target;
   }
 
-  if (safe.days.length > 21) safe.days = safe.days.slice(0, 21);
+  if (safe.days.length > 30) safe.days = safe.days.slice(0, 30);
   safe.experiences = safe.experiences.slice(0, 12);
   safe.includes = safe.includes.slice(0, 30);
   safe.excludes = safe.excludes.slice(0, 30);
