@@ -383,13 +383,12 @@ export async function POST(req: NextRequest) {
 
     // Day-by-day (new page if needed)
     let currentPage = page;
-
-    function ensureSpace(min: number) {
+    const ensureSpace = (min: number) => {
       if (y < min) {
         currentPage = pdf.addPage([595.28, 841.89]);
         y = currentPage.getSize().height - M;
       }
-    }
+    };
 
     if (activitiesParagraph) {
       ensureSpace(140);
