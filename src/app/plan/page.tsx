@@ -15,7 +15,7 @@ type ItineraryResult = {
   style: string;
   groupType: string;
   experiences: string[];
-  days: string[];
+  days: DayPlan[];
   includes: string[];
   excludes: string[];
   details: string;
@@ -23,6 +23,12 @@ type ItineraryResult = {
   mealsAndAccommodation: string[];
 };
 
+type DayPlan = {
+  title: string;
+  activities: string;
+  meals?: string | null;
+  accommodation?: string | null;
+};
 type Msg = { role: "user" | "assistant"; content: string };
 
 type VerifiedOperator = {
@@ -89,7 +95,12 @@ function schemaHint() {
   "style": string,
   "groupType": string,
   "experiences": string[],
-  "days": string[],
+  "days": [{
+    "title": string,
+    "activities": string,
+    "meals": string|null,
+    "accommodation": string|null
+  }],
   "includes": string[],
   "excludes": string[],
   "details": string,
@@ -208,7 +219,19 @@ function normalizeResult(
       : [],
   };
 
-  safe.days = safe.days.map((x) => String(x || "").trim()).filter(Boolean);
+  const mappedDays: DayPlan[] = Array.isArray(safe.days)
+    ? safe.days
+        .map((d, idx) => {
+          const title = String((d as any)?.title || "").trim() || `Day ${idx + 1}`;
+          const activities = String((d as any)?.activities || d || "").trim();
+          const meals = (d as any)?.meals ?? null;
+          const accommodation = (d as any)?.accommodation ?? null;
+          if (!activities) return null;
+          return { title, activities, meals, accommodation };
+        })
+        .filter(Boolean) as DayPlan[]
+    : [];
+  safe.days = mappedDays;
 
   if (!safe.style && selectedStyle) safe.style = selectedStyle;
 
@@ -238,6 +261,10 @@ function normalizeResult(
   if (!safe.mealsAndAccommodation.length && safe.experiences.length) {
     safe.mealsAndAccommodation = safe.experiences.slice(0, 6);
   }
+
+  // Ensure daysCount aligns with mapped days
+  if (safe.days.length > 0) safe.daysCount = safe.days.length;
+  if (!safe.daysCount || safe.daysCount < 1) safe.daysCount = Math.max(1, safe.days.length || 1);
 
   return safe;
 }
@@ -502,7 +529,15 @@ export default function PlanPage() {
       result.title,
       result.summary,
       "",
-      ...result.days.map((d, i) => `Day ${i + 1}: ${d}`),
+      ...result.days.map((d, i) => {
+        const lines = [
+          `Day ${i + 1}: ${d.title || "Day plan"}`,
+          `Activities of the Day: ${d.activities}`,
+        ];
+        if (d.meals) lines.push(`Meals: ${d.meals}`);
+        if (d.accommodation) lines.push(`Accommodation: ${d.accommodation}`);
+        return lines.join("\n");
+      }),
       "",
       "Details:",
       result.details,
@@ -964,9 +999,25 @@ export default function PlanPage() {
                     <div style={S.sectionTitle}>Day-by-day</div>
                     <div style={S.daysList}>
                       {result.days.map((d, i) => (
-                        <div key={i} style={S.dayCard}>
-                          <div style={S.dayHead}>Day {i + 1}</div>
-                          <div style={S.dayText}>{d}</div>
+                        <div key={`${d.title}-${i}`} style={S.dayCard}>
+                          <div style={S.dayHead}>{d.title || `Day ${i + 1}`}</div>
+                          <div style={S.dayText}>
+                            <strong>Activities of the Day:</strong> {d.activities}
+                          </div>
+                          {(d.meals || d.accommodation) && (
+                            <ul style={S.ul}>
+                              {d.meals && (
+                                <li style={S.li}>
+                                  <strong>Meals:</strong> {d.meals}
+                                </li>
+                              )}
+                              {d.accommodation && (
+                                <li style={S.li}>
+                                  <strong>Accommodation:</strong> {d.accommodation}
+                                </li>
+                              )}
+                            </ul>
+                          )}
                         </div>
                       ))}
                     </div>

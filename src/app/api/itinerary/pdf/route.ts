@@ -23,7 +23,15 @@ type ItineraryPayload = {
     style?: string;
     groupType?: string;
     experiences?: string[];
-    days?: string[];
+    days?: Array<
+      | string
+      | {
+          title?: string;
+          activities?: string;
+          meals?: string | null;
+          accommodation?: string | null;
+        }
+    >;
     includes?: string[];
     excludes?: string[];
     details?: string;
@@ -464,12 +472,21 @@ export async function POST(req: NextRequest) {
       y -= 14;
 
       for (let i = 0; i < days.length; i++) {
-        const dayText = safeText(days[i], "");
-        if (!dayText) continue;
+        const raw = days[i] as any;
+        const title = safeText(raw?.title || `Day ${i + 1}`);
+        const activities = safeText(raw?.activities ?? raw ?? "");
+        const meals = raw?.meals ? safeText(raw.meals, "") : "";
+        const accommodation = raw?.accommodation ? safeText(raw.accommodation, "") : "";
+
+        if (!activities) continue;
 
         // Estimate height needed (rough wrap count)
-        const lines = wrapText(fontRegular, dayText, 12, contentW - 28);
-        const blockH = 18 + lines.length * 16 + 20;
+        const lines = wrapText(fontRegular, activities, 12, contentW - 28);
+        const mealsLines = meals ? wrapText(fontRegular, `Meals: ${meals}`, 11, contentW - 28) : [];
+        const accLines = accommodation
+          ? wrapText(fontRegular, `Accommodation: ${accommodation}`, 11, contentW - 28)
+          : [];
+        const blockH = 18 + lines.length * 16 + (mealsLines.length + accLines.length) * 14 + 28;
 
         if (y - blockH < 80) {
           currentPage = pdf.addPage([595.28, 841.89]);
@@ -487,7 +504,7 @@ export async function POST(req: NextRequest) {
           borderWidth: 1,
         });
 
-        currentPage.drawText(`Day ${i + 1}`, {
+        currentPage.drawText(title, {
           x: M + 14,
           y: y - 22,
           size: 12,
@@ -505,6 +522,33 @@ export async function POST(req: NextRequest) {
             color: BRAND.muted,
           });
           ty -= 16;
+        }
+
+        const metaStart = ty + 8;
+        let metaY = metaStart;
+        if (mealsLines.length) {
+          for (const ln of mealsLines) {
+            currentPage.drawText(ln, {
+              x: M + 14,
+              y: metaY,
+              size: 11,
+              font: fontRegular,
+              color: BRAND.ink,
+            });
+            metaY -= 14;
+          }
+        }
+        if (accLines.length) {
+          for (const ln of accLines) {
+            currentPage.drawText(ln, {
+              x: M + 14,
+              y: metaY,
+              size: 11,
+              font: fontRegular,
+              color: BRAND.ink,
+            });
+            metaY -= 14;
+          }
         }
 
         y = y - blockH - 12;
