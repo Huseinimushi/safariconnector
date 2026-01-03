@@ -928,11 +928,11 @@ export default function PlanPage() {
               <button
                 type="button"
                 onClick={sendToOperator}
-                disabled={!result || sending || !selectedOperatorId || !user}
+                disabled={!result || sending || !selectedOperatorId}
                 style={{
                   ...S.sendBtn,
-                  opacity: !result || sending || !selectedOperatorId || !user ? 0.6 : 1,
-                  cursor: !result || sending || !selectedOperatorId || !user ? "not-allowed" : "pointer",
+                  opacity: !result || sending || !selectedOperatorId ? 0.6 : 1,
+                  cursor: !result || sending || !selectedOperatorId ? "not-allowed" : "pointer",
                 }}
               >
                 {sending ? "Sending..." : user ? "Send to operator" : "Log in to send"}
