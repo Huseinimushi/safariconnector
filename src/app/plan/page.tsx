@@ -600,6 +600,12 @@ export default function PlanPage() {
       return;
     }
 
+    if (!user) {
+      setToast("Please log in or sign up to send this itinerary.");
+      window.location.assign("/login");
+      return;
+    }
+
     setSending(true);
     setToast(null);
 
@@ -865,11 +871,13 @@ export default function PlanPage() {
               </div>
 
               <div style={S.actionBar}>
-                <div style={S.actionTitle}>Send to operator</div>
-                <div style={S.actionSub}>Select operator, capture contact, submit for quote.</div>
+              <div style={S.actionTitle}>Send to operator</div>
+              <div style={S.actionSub}>Select operator, capture contact, submit for quote.</div>
 
-                <div style={{ marginTop: 10 }}>
-                  <div style={S.smallLabel}>Select operator</div>
+              {!user && <div style={S.warnBox}>Please log in or sign up to send this itinerary to an operator.</div>}
+
+              <div style={{ marginTop: 10 }}>
+                <div style={S.smallLabel}>Select operator</div>
 
                   <select
                     value={selectedOperatorId}
@@ -917,20 +925,20 @@ export default function PlanPage() {
                   />
                 </div>
 
-                <button
-                  type="button"
-                  onClick={sendToOperator}
-                  disabled={!result || sending || !selectedOperatorId}
-                  style={{
-                    ...S.sendBtn,
-                    opacity: !result || sending || !selectedOperatorId ? 0.6 : 1,
-                    cursor: !result || sending || !selectedOperatorId ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {sending ? "Sending..." : "Send to operator"}
-                </button>
+              <button
+                type="button"
+                onClick={sendToOperator}
+                disabled={!result || sending || !selectedOperatorId || !user}
+                style={{
+                  ...S.sendBtn,
+                  opacity: !result || sending || !selectedOperatorId || !user ? 0.6 : 1,
+                  cursor: !result || sending || !selectedOperatorId || !user ? "not-allowed" : "pointer",
+                }}
+              >
+                {sending ? "Sending..." : user ? "Send to operator" : "Log in to send"}
+              </button>
 
-                {!selectedOperatorId && <div style={S.sendHint}>Select an operator to enable sending.</div>}
+              {!selectedOperatorId && <div style={S.sendHint}>Select an operator to enable sending.</div>}
               </div>
 
               {showDownload && (
