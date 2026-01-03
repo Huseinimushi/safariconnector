@@ -602,7 +602,7 @@ export default function PlanPage() {
 
     if (!user) {
       setToast("Please log in or sign up to send this itinerary.");
-      window.location.assign("/login");
+      window.open("https://safariconnector.com/login/traveller", "_blank", "noopener,noreferrer");
       return;
     }
 
