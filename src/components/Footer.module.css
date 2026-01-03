@@ -1,8 +1,8 @@
 .footer {
   margin-top: 48px;
-  background: #2f3033;
+  background: #1b4d3e;
   color: #e5e7eb;
-  border-top: 1px solid #3b3d42;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .container {
