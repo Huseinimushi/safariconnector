@@ -8,7 +8,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 
-/* ───────────────── Types ───────────────── */
+/* Types */
 type TripRow = {
   id: string;
   title: string;
@@ -30,7 +30,7 @@ type OperatorRow = {
   logo_url?: string | null;
 };
 
-/* ─────────────── Local destination images (/public/destinations) ─────────────── */
+/* Local destination images (/public/destinations) */
 const DEST_IMG: Record<string, string> = {
   Serengeti: "/destinations/serengeti.jpg",
   Ngorongoro: "/destinations/ngorongoro.jpg",
@@ -62,18 +62,109 @@ const money = (n: number | null | undefined, c = "USD") =>
 function clampText(s: string, max = 60) {
   const t = (s || "").trim();
   if (t.length <= max) return t;
-  return t.slice(0, max - 1).trim() + "…";
+  return t.slice(0, max - 1).trim() + "...";
 }
 
 /* NOTE: plain CSS (NO styled-jsx) */
 const PAGE_CSS = `
-/* Layout */
+/* Layout helpers */
+.sc-hero-shell { padding: clamp(22px, 4vw, 34px) 16px 18px; }
+.sc-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: 18px;
+  margin-top: 18px;
+  align-items: end;
+}
+.sc-hero-title {
+  margin: 0;
+  font-size: clamp(30px, 6vw, 44px);
+  line-height: clamp(36px, 6.2vw, 52px);
+  font-weight: 950;
+}
+.sc-hero-lead {
+  margin: 12px 0 0;
+  font-size: clamp(14px, 3.6vw, 16px);
+  line-height: 1.6;
+}
+.sc-badge-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.sc-badge-row-left {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.sc-hero-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+}
+.sc-search {
+  margin-top: 18px;
+  background: rgba(255,255,255,.90);
+  border: 1px solid rgba(255,255,255,.70);
+  border-radius: 999px;
+  padding: 8px;
+  box-shadow: 0 18px 40px rgba(0,0,0,.25);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  backdrop-filter: blur(10px);
+  max-width: 760px;
+}
+.sc-search input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+.sc-search-btn { border-radius: 999px; padding: 12px 18px; width: auto; }
+.sc-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.sc-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.sc-section-head h2 {
+  margin: 0;
+  font-size: clamp(20px, 4vw, 22px);
+  font-weight: 950;
+}
+.sc-section-head p { margin: 5px 0 0; }
+.sc-section-link {
+  white-space: nowrap;
+  align-self: center;
+}
+
 @media (max-width: 980px) {
   .sc-hero-grid { grid-template-columns: 1fr !important; }
   .sc-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .sc-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+  .sc-search { flex-direction: column; align-items: stretch; border-radius: 18px; }
+  .sc-search-btn { width: 100%; }
 }
 @media (max-width: 640px) {
   .sc-grid-3 { grid-template-columns: 1fr !important; }
+  .sc-stat-grid { grid-template-columns: 1fr; }
 }
 
 /* Popular destinations: one-line auto carousel */
@@ -109,7 +200,7 @@ const PAGE_CSS = `
 async function loadHomepageData() {
   const supabase = await supabaseServer();
 
-  // 1) TRY trips_view (SAFE columns ONLY — no style)
+  // 1) TRY trips_view (SAFE columns ONLY - no style)
   const tripsViewRes = await supabase
     .from("trips_view")
     .select("id,title,duration,parks,price_from,price_to,hero_url,created_at")
@@ -219,30 +310,19 @@ export default async function HomePage() {
         </div>
 
         <div
+          className="sc-hero-shell"
           style={{
             position: "relative",
             maxWidth: 1180,
             margin: "0 auto",
-            padding: "34px 16px 18px",
           }}
         >
           {/* Pills */}
           <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 12,
-              flexWrap: "wrap",
-              alignItems: "center",
-            }}
+            className="sc-badge-row"
           >
             <div
-              style={{
-                display: "flex",
-                gap: 10,
-                flexWrap: "wrap",
-                alignItems: "center",
-              }}
+              className="sc-badge-row-left"
             >
               <Badge
                 style={{
@@ -273,8 +353,8 @@ export default async function HomePage() {
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              {/* ✅ Login goes to main domain traveller login */}
+            <div className="sc-hero-actions">
+              {/* Login goes to main domain traveller login */}
               <a
                 href={TRAVELLER_LOGIN_URL}
                 style={{ textDecoration: "none" }}
@@ -312,27 +392,17 @@ export default async function HomePage() {
           {/* Headline + Search */}
           <div
             className="sc-hero-grid"
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 0.8fr)",
-              gap: 18,
-              marginTop: 18,
-              alignItems: "end",
-            }}
           >
             <div>
               <h1
+                className="sc-hero-title"
                 style={{
-                  margin: 0,
-                  fontSize: 44,
-                  lineHeight: "50px",
-                  fontWeight: 950,
                   color: "#F8FAFC",
                   textShadow: "0 10px 30px rgba(0,0,0,.55)",
                   letterSpacing: "-0.02em",
                 }}
               >
-                Book a safari with confidence —
+                Book a safari with confidence
                 <br />
                 curated trips, real operators,
                 <br />
@@ -340,13 +410,10 @@ export default async function HomePage() {
               </h1>
 
               <p
+                className="sc-hero-lead"
                 style={{
-                  marginTop: 12,
-                  marginBottom: 0,
                   color: "rgba(255,255,255,.88)",
-                  fontSize: 16,
                   maxWidth: 680,
-                  lineHeight: 1.55,
                 }}
               >
                 Start with AI or browse itineraries. Request quotes from vetted
@@ -354,41 +421,18 @@ export default async function HomePage() {
               </p>
 
               {/* Search bar (visual like mockup) */}
-              <div
-                style={{
-                  marginTop: 18,
-                  background: "rgba(255,255,255,.90)",
-                  border: "1px solid rgba(255,255,255,.70)",
-                  borderRadius: 999,
-                  padding: 8,
-                  boxShadow: "0 18px 40px rgba(0,0,0,.25)",
-                  display: "flex",
-                  gap: 10,
-                  alignItems: "center",
-                  backdropFilter: "blur(10px)",
-                  maxWidth: 760,
-                }}
-              >
+              <div className="sc-search">
                 <input
-                  placeholder="Search parks, routes, or trip name… (e.g. Serengeti)"
-                  style={{
-                    flex: 1,
-                    border: "none",
-                    outline: "none",
-                    background: "transparent",
-                    padding: "10px 14px",
-                    fontSize: 14,
-                    color: BRAND.ink,
-                  }}
+                  placeholder="Search parks, routes, or trip name (e.g. Serengeti)"
+                  style={{ color: BRAND.ink }}
                 />
                 <Link href="/trips" style={{ textDecoration: "none" }}>
                   <Button
+                    className="sc-search-btn"
                     style={{
-                      borderRadius: 999,
                       background: BRAND.green,
                       border: "none",
                       fontWeight: 950,
-                      padding: "12px 18px",
                     }}
                   >
                     Browse Trips
@@ -440,7 +484,7 @@ export default async function HomePage() {
                       backdropFilter: "blur(10px)",
                     }}
                   >
-                    Build with AI →
+                    Build with AI >
                   </span>
                 </Link>
               </div>
@@ -458,13 +502,7 @@ export default async function HomePage() {
                 color: "rgba(255,255,255,.92)",
               }}
             >
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr 1fr",
-                  gap: 10,
-                }}
-              >
+              <div className="sc-stat-grid">
                 <Stat label="Trips" value={`${stats.trips}+`} />
                 <Stat
                   label="Vetted operators"
@@ -559,7 +597,7 @@ export default async function HomePage() {
   );
 }
 
-/* ───────────────── Components ───────────────── */
+/* Components */
 
 function HeaderRow({
   title,
@@ -571,26 +609,9 @@ function HeaderRow({
   href: string;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "baseline",
-        gap: 16,
-        marginBottom: 10,
-      }}
-    >
+    <div className="sc-section-head">
       <div>
-        <h2
-          style={{
-            margin: 0,
-            fontSize: 22,
-            fontWeight: 950,
-            color: BRAND.ink,
-          }}
-        >
-          {title}
-        </h2>
+        <h2 style={{ color: BRAND.ink }}>{title}</h2>
         {subtitle ? (
           <p style={{ margin: "5px 0 0", fontSize: 13, color: BRAND.muted }}>
             {subtitle}
@@ -599,15 +620,15 @@ function HeaderRow({
       </div>
       <Link
         href={href}
+        className="sc-section-link"
         style={{
           color: BRAND.green2,
           fontWeight: 900,
           fontSize: 14,
           textDecoration: "none",
-          whiteSpace: "nowrap",
         }}
       >
-        View all →
+        View all >
       </Link>
     </div>
   );
@@ -815,7 +836,7 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
               {trip.duration ? <span>{trip.duration} days</span> : null}
               {trip.parks?.length ? (
                 <span>
-                  • {trip.parks.slice(0, 2).join(", ")}
+                  > {trip.parks.slice(0, 2).join(", ")}
                   {trip.parks.length > 2 ? " +" : ""}
                 </span>
               ) : null}
@@ -836,7 +857,7 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
             {price}
           </div>
           <div style={{ fontSize: 13, fontWeight: 900, color: BRAND.green2 }}>
-            View →
+            View >
           </div>
         </div>
       </div>
