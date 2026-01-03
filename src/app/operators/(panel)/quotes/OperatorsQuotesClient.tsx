@@ -91,6 +91,28 @@ const formatDateTime = (value: string | null) => {
   });
 };
 
+const OPENED_KEY = "safariconnector_opened_enquiries";
+
+const readOpenedEnquiries = (): Record<string, boolean> => {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(OPENED_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const persistOpenedEnquiries = (map: Record<string, boolean>) => {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(OPENED_KEY, JSON.stringify(map));
+  } catch {
+    // ignore storage errors (private mode, etc.)
+  }
+};
+
 const getTravellerStatusLabel = (hasQuote: boolean, hasBooking: boolean) => {
   if (hasBooking) return "Booking created";
   if (hasQuote) return "Quote sent";
@@ -203,6 +225,11 @@ export default function OperatorsQuotesClient() {
   const [confirmingBooking, setConfirmingBooking] = useState(false);
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [openedEnquiries, setOpenedEnquiries] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setOpenedEnquiries(readOpenedEnquiries());
+  }, []);
 
   /* ───────── Load operator + enquiries ───────── */
 
@@ -303,6 +330,17 @@ export default function OperatorsQuotesClient() {
       isMounted = false;
     };
   }, [searchParams]);
+
+  useEffect(() => {
+    if (selectedEnquiryId == null) return;
+    setOpenedEnquiries((prev) => {
+      const key = String(selectedEnquiryId);
+      if (prev[key]) return prev;
+      const next = { ...prev, [key]: true };
+      persistOpenedEnquiries(next);
+      return next;
+    });
+  }, [selectedEnquiryId]);
 
   const selectedEnquiry = useMemo(
     () => (selectedEnquiryId == null ? null : enquiries.find((e) => e.id === selectedEnquiryId) || null),
@@ -802,7 +840,7 @@ export default function OperatorsQuotesClient() {
           </p>
 
           {loading ? (
-            <div style={{ marginTop: 16, fontSize: 13, color: "#6B7280" }}>Loading enquiries…</div>
+            <div style={{ marginTop: 16, fontSize: 13, color: "#6B7280" }}>Loading enquiries...</div>
           ) : enquiries.length === 0 ? (
             <div
               style={{
@@ -827,8 +865,9 @@ export default function OperatorsQuotesClient() {
                 const hasQuote = !!(quote && isCurrentSelected && quote.quote_request_id === q.id);
                 const hasBooking = !!(booking && hasQuote && booking.quote_id === quote?.id);
 
-                const isOpened = isActive;
+                const isOpened = isActive || openedEnquiries[String(q.id)];
                 const statusLabel = isOpened ? "Opened" : getTravellerStatusLabel(hasQuote, hasBooking);
+                const isAI = !q.trip_id;
 
                 const statusBg = isOpened
                   ? "#E5E7EB"
@@ -870,13 +909,28 @@ export default function OperatorsQuotesClient() {
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>{q.trip_title || "Safari enquiry"}</div>
                         <div style={{ fontSize: 12, color: "#6B7280" }}>
-                          {q.name || "Traveller"} · {q.date ? `Preferred: ${formatDateShort(q.date)}` : "Dates flexible"}
+                          {q.name || "Traveller"} - {q.date ? `Preferred: ${formatDateShort(q.date)}` : "Dates flexible"}
                         </div>
                         <div style={{ marginTop: 3, fontSize: 11, color: "#6B7280" }}>Travellers {q.pax ?? "not specified"}</div>
                       </div>
 
                       <div style={{ textAlign: "right" }}>
-                        <div style={{ marginBottom: 4 }}>
+                        <div style={{ marginBottom: 4, display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center", flexWrap: "wrap" }}>
+                          {isAI ? (
+                            <span
+                              style={{
+                                padding: "2px 7px",
+                                borderRadius: 999,
+                                backgroundColor: "#E0F2FE",
+                                color: "#075985",
+                                border: "1px solid #BAE6FD",
+                                fontSize: 11,
+                                fontWeight: 700,
+                              }}
+                            >
+                              AI
+                            </span>
+                          ) : null}
                           <span
                             style={{
                               padding: "2px 7px",
@@ -1333,3 +1387,6 @@ export default function OperatorsQuotesClient() {
     </main>
   );
 }
+
+
+
