@@ -6,8 +6,9 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-import { FiUser } from "react-icons/fi";
+import { FiUser, FiMenu, FiX } from "react-icons/fi";
 import { HiOutlineBuildingOffice2 } from "react-icons/hi2";
+import styles from "./Nav.module.css";
 
 export default function Nav() {
   const pathname = usePathname();
@@ -15,10 +16,8 @@ export default function Nav() {
 
   const mountedRef = useRef(true);
   const [hasUser, setHasUser] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  // -----------------------------
-  // Auth bootstrap (lightweight)
-  // -----------------------------
   useEffect(() => {
     mountedRef.current = true;
 
@@ -46,15 +45,13 @@ export default function Nav() {
     };
   }, []);
 
-  // -----------------------------
-  // Labels + handlers
-  // -----------------------------
   const travellerLabel = useMemo(
     () => (hasUser ? "My Account" : "Traveller"),
     [hasUser]
   );
 
   const handleTravellerClick = () => {
+    setMobileOpen(false);
     router.push(hasUser ? "/traveller/dashboard" : "/login/traveller");
   };
 
@@ -65,126 +62,88 @@ export default function Nav() {
     return pathname === href;
   };
 
+  const navLinks = [
+    { href: "/trips", label: "Trips" },
+    { href: "/plan", label: "AI Trip Builder" },
+    { href: "/about", label: "About" },
+  ];
+
   return (
-    <header
-      style={{
-        position: "sticky",
-        top: 0,
-        zIndex: 50,
-        background: "#ffffff",
-        borderBottom: "1px solid #e5e7eb",
-      }}
-    >
-      {/* sc-container is global responsive padding */}
-      <div className="sc-container">
-        {/* sc-row + sc-wrap makes it responsive without changing content */}
-        <div
-          className="sc-row sc-wrap"
-          style={{
-            minHeight: 76, // accommodates 70px logo cleanly
-            paddingTop: 10,
-            paddingBottom: 10,
-          }}
-        >
-          {/* LEFT: BIG LOGO */}
-          <div style={{ display: "flex", alignItems: "center", flex: "0 0 auto" }}>
-            <Link href="/" aria-label="Safari Connector home">
-              <img
-                src="/logo.png"
-                alt="Safari Connector"
-                style={{
-                  height: 70,
-                  width: "auto",
-                  display: "block",
-                  maxWidth: "100%",
-                }}
-              />
-            </Link>
-          </div>
+    <header className={styles.header}>
+      <div className={styles.topbar} aria-hidden="true">
+        <div className={styles.topLeft}></div>
+        <div className={styles.topRight}></div>
+      </div>
 
-          {/* CENTER: NAV LINKS */}
-          <nav
-            aria-label="Main navigation"
-            className="sc-nav-links"
-            style={{
-              fontSize: 14,
-              fontWeight: 600,
-              whiteSpace: "nowrap",
-              flex: "1 1 auto",
-              minWidth: 0,
-            }}
+      <div className={styles.navbar}>
+        <div className={styles.logoArea}>
+          <Link href="/" aria-label="Safari Connector home" className={styles.logoLink}>
+            <img src="/logo.png" alt="Safari Connector" className={styles.logoImage} />
+          </Link>
+        </div>
+
+        <nav className={styles.navCenter} aria-label="Main navigation">
+          {navLinks.map((l) => (
+            <Link
+              key={l.href}
+              href={l.href}
+              className={isActive(l.href) ? `${styles.navLink} ${styles.active}` : styles.navLink}
+              onClick={() => setMobileOpen(false)}
+            >
+              {l.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className={styles.rightTools}>
+          <button
+            type="button"
+            onClick={handleTravellerClick}
+            aria-label={travellerLabel}
+            title={travellerLabel}
+            className={styles.iconBtn}
           >
+            <FiUser />
+          </button>
+
+          <a
+            href="https://operator.safariconnector.com/login"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Login as Operator"
+            title="Login as Operator"
+            className={styles.operatorBtn}
+          >
+            <HiOutlineBuildingOffice2 />
+          </a>
+
+          <button
+            className={styles.mobileToggle}
+            aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            onClick={() => setMobileOpen((s) => !s)}
+          >
+            {mobileOpen ? <FiX /> : <FiMenu />}
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile menu */}
+      <div className={mobileOpen ? styles.mobileMenuOpen : styles.mobileMenu}>
+        <div className={styles.mobileMenuInner}>
+          {navLinks.map((l) => (
             <Link
-              href="/trips"
-              className={`nav-link${isActive("/trips") ? " active" : ""}`}
+              key={l.href}
+              href={l.href}
+              className={styles.mobileLink}
+              onClick={() => setMobileOpen(false)}
             >
-              Trips
+              {l.label}
             </Link>
+          ))}
 
-            <Link
-              href="/plan"
-              className={`nav-link${isActive("/plan") ? " active" : ""}`}
-            >
-              AI Trip Builder
-            </Link>
-
-            <Link
-              href="/about"
-              className={`nav-link${isActive("/about") ? " active" : ""}`}
-            >
-              About
-            </Link>
-          </nav>
-
-          {/* RIGHT: ICON ACTIONS */}
-          <div className="sc-actions">
-            {/* Traveller (icon button) */}
-            <button
-              type="button"
-              onClick={handleTravellerClick}
-              aria-label={travellerLabel}
-              title={travellerLabel}
-              style={{
-                height: 40,
-                width: 40,
-                borderRadius: 999,
-                border: "1px solid rgba(27,77,62,.35)",
-                background: "#ffffff",
-                color: "#1B4D3E",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-                flex: "0 0 auto",
-              }}
-            >
-              <FiUser style={{ fontSize: 18 }} />
-            </button>
-
-            {/* Operator (icon button, new tab) */}
-            <a
-              href="https://operator.safariconnector.com/login"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Login as Operator"
-              title="Login as Operator"
-              style={{
-                height: 40,
-                width: 40,
-                borderRadius: 999,
-                border: "1px solid #1B4D3E",
-                background: "#1B4D3E",
-                color: "#ffffff",
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                textDecoration: "none",
-                flex: "0 0 auto",
-              }}
-            >
-              <HiOutlineBuildingOffice2 style={{ fontSize: 18 }} />
-            </a>
-          </div>
+          <button className={styles.mobileAction} onClick={handleTravellerClick}>
+            {travellerLabel}
+          </button>
         </div>
       </div>
     </header>
