@@ -186,6 +186,53 @@
   }
 }
 
+/* Mobile: Intrepid-like look */
+@media (max-width: 480px) {
+  .header {
+    background: #ffffff;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.06);
+  }
+
+  .navbar {
+    padding: 12px 14px;
+  }
+
+  .logoImage {
+    height: 36px;
+  }
+
+  .navCenter {
+    display: none;
+  }
+
+  .mobileToggle {
+    display: inline-flex;
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 22px;
+    color: #0b6b3a;
+  }
+
+  .rightTools {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    gap: 8px;
+  }
+
+  .logoArea {
+    margin-left: 6px;
+  }
+
+  .mobileMenuOpen {
+    border-top: none;
+    box-shadow: none;
+  }
+}
+
 @media (min-width: 1200px) {
   .logoImage {
     height: 64px;
