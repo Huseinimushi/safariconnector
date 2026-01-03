@@ -195,6 +195,8 @@
 
   .navbar {
     padding: 12px 14px;
+    align-items: center;
+    gap: 10px;
   }
 
   .logoImage {
@@ -207,20 +209,17 @@
 
   .mobileToggle {
     display: inline-flex;
-    position: absolute;
-    right: 14px;
-    top: 50%;
-    transform: translateY(-50%);
+    position: static;
+    transform: none;
     font-size: 22px;
     color: #0b6b3a;
   }
 
   .rightTools {
-    position: absolute;
-    right: 14px;
-    top: 50%;
-    transform: translateY(-50%);
+    position: static;
+    transform: none;
     gap: 8px;
+    margin-left: auto;
   }
 
   .logoArea {
