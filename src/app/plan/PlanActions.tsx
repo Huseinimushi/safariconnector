@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 type VerifiedOperator = {
   id: string;
@@ -79,6 +80,8 @@ export default function PlanActions() {
   // --- Contact fields
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
 
   // --- Itinerary output (your app already has generation; keep these hooks aligned to your existing state)
   // Replace these with your real state sources if they already exist in your page.
@@ -89,6 +92,25 @@ export default function PlanActions() {
   const selectedOperator = useMemo(() => {
     return operators.find((o) => o.id === selectedOperatorId) || null;
   }, [operators, selectedOperatorId]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const { data } = await supabase.auth.getUser();
+        if (!alive) return;
+        setIsLoggedIn(!!data?.user);
+      } catch {
+        if (!alive) return;
+        setIsLoggedIn(false);
+      } finally {
+        if (alive) setAuthChecked(true);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -275,10 +297,17 @@ export default function PlanActions() {
       <div className="space-y-2">
         <button
           className="w-full rounded-full bg-[#0F6B45] px-4 py-3 text-[14px] font-semibold text-white disabled:opacity-60"
-          disabled={!selectedOperatorId || !fullName.trim() || !email.trim()}
-          onClick={() => setToast("Send to operator (hook your existing handler here).")}
+          disabled={!authChecked || !isLoggedIn || !selectedOperatorId || !fullName.trim() || !email.trim()}
+          onClick={() => {
+            if (!isLoggedIn) {
+              setToast("Please log in or sign up to send your itinerary to an operator.");
+              window.location.assign("/login");
+              return;
+            }
+            setToast("Send to operator (hook your existing handler here).");
+          }}
         >
-          Send to operator
+          {isLoggedIn ? "Send to operator" : "Log in to send"}
         </button>
 
         <div className="pt-2">
