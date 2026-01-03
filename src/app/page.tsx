@@ -484,7 +484,7 @@ export default async function HomePage() {
                       backdropFilter: "blur(10px)",
                     }}
                   >
-                    Build with AI >
+                    Build with AI &gt;
                   </span>
                 </Link>
               </div>
@@ -628,7 +628,7 @@ function HeaderRow({
           textDecoration: "none",
         }}
       >
-        View all >
+        View all &gt;
       </Link>
     </div>
   );
@@ -836,7 +836,7 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
               {trip.duration ? <span>{trip.duration} days</span> : null}
               {trip.parks?.length ? (
                 <span>
-                  > {trip.parks.slice(0, 2).join(", ")}
+                  - {trip.parks.slice(0, 2).join(", ")}
                   {trip.parks.length > 2 ? " +" : ""}
                 </span>
               ) : null}
@@ -857,7 +857,7 @@ function TripCard({ trip, highlight }: { trip: TripRow; highlight?: boolean }) {
             {price}
           </div>
           <div style={{ fontSize: 13, fontWeight: 900, color: BRAND.green2 }}>
-            View >
+            View &gt;
           </div>
         </div>
       </div>
