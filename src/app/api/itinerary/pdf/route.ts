@@ -26,6 +26,8 @@ type ItineraryPayload = {
     days?: string[];
     includes?: string[];
     excludes?: string[];
+    details?: string;
+    activities?: string[];
   };
   travellerName?: string;
   email?: string;
@@ -179,6 +181,8 @@ export async function POST(req: NextRequest) {
     const days = Array.isArray(itinerary?.days) ? itinerary!.days! : [];
     const includes = Array.isArray(itinerary?.includes) ? itinerary!.includes! : [];
     const excludes = Array.isArray(itinerary?.excludes) ? itinerary!.excludes! : [];
+    const details = safeText((itinerary as any)?.details || "", "");
+    const activities = Array.isArray((itinerary as any)?.activities) ? (itinerary as any)!.activities! : [];
 
     const pdf = await PDFDocument.create();
 
@@ -295,6 +299,15 @@ export async function POST(req: NextRequest) {
     y = drawParagraph(page, fontRegular, summary || "-", M, y, 12, contentW, 16, BRAND.ink);
     y -= 8;
 
+    if (details) {
+      page.drawText("Details", { x: M, y, size: 16, font: fontBold, color: BRAND.ink });
+      y -= 14;
+      page.drawLine({ start: { x: M, y }, end: { x: width - M, y }, thickness: 1, color: BRAND.line });
+      y -= 14;
+      y = drawParagraph(page, fontRegular, details, M, y, 12, contentW, 16, BRAND.ink);
+      y -= 8;
+    }
+
     // Focus Areas
     if (focus.length) {
       page.drawText("Focus Areas", { x: M, y, size: 16, font: fontBold, color: BRAND.ink });
@@ -368,6 +381,48 @@ export async function POST(req: NextRequest) {
     }
 
     let currentPage = page;
+
+    if (activities.length) {
+      currentPage = ensureSpace(180);
+      currentPage.drawText("Activities", { x: M, y, size: 16, font: fontBold, color: BRAND.ink });
+      y -= 14;
+      currentPage.drawLine({
+        start: { x: M, y },
+        end: { x: currentPage.getSize().width - M, y },
+        thickness: 1,
+        color: BRAND.line,
+      });
+      y -= 12;
+
+      const maxItems = 14;
+      for (const item of activities.slice(0, maxItems)) {
+        const text = safeText(item, "");
+        if (!text) continue;
+
+        const lines = wrapText(fontRegular, text, 12, contentW - 20);
+        const blockH = lines.length * 14 + 10;
+
+        if (y - blockH < 80) {
+          currentPage = pdf.addPage([595.28, 841.89]);
+          y = currentPage.getSize().height - M;
+        }
+
+        let cy = y;
+        for (const ln of lines) {
+          currentPage.drawText(`• ${ln}`, {
+            x: M + 2,
+            y: cy,
+            size: 12,
+            font: fontRegular,
+            color: BRAND.ink,
+          });
+          cy -= 14;
+        }
+        y = cy - 4;
+      }
+
+      y -= 6;
+    }
 
     if (days.length) {
       currentPage = ensureSpace(200);
