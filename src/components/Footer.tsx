@@ -151,17 +151,6 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className={styles.featuredRow}>
-          <div className={styles.featuredLine} />
-          <div className={styles.featuredCopy}>As featured in</div>
-          <div className={styles.featuredLogos}>
-            <span>The Times</span>
-            <span>Travel Africa</span>
-            <span>CNN Travel</span>
-          </div>
-          <div className={styles.featuredLine} />
-        </div>
-
         <div className={styles.ctaBar}>
           <span>Ready to plan your safari?</span>
           <Link href="/plan" className={styles.ctaButton}>

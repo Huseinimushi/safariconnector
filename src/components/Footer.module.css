@@ -159,26 +159,6 @@
   line-height: 1;
 }
 
-.featuredRow {
-  display: grid;
-  grid-template-columns: 1fr auto auto 1fr;
-  align-items: center;
-  gap: 12px;
-  color: #cbd5e1;
-  font-size: 13px;
-}
-
-.featuredLine {
-  height: 1px;
-  background: #3b3d42;
-}
-
-.featuredLogos {
-  display: flex;
-  gap: 14px;
-  font-weight: 700;
-}
-
 .ctaBar {
   display: flex;
   align-items: center;
@@ -226,15 +206,6 @@
   .about {
     grid-template-columns: 1fr;
     align-items: start;
-  }
-
-  .featuredRow {
-    grid-template-columns: 1fr;
-    text-align: center;
-  }
-
-  .featuredLogos {
-    justify-content: center;
   }
 
   .ctaBar {
