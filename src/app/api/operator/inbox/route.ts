@@ -90,6 +90,19 @@ export async function POST(req: NextRequest) {
 
     const sb = getAdminSupabase();
 
+    // Resolve traveller_id (travellers.id) from auth user_id if present
+    let travellerRowId: string | null = null;
+    if (user_id) {
+      const { data: travellerRow, error: travellerErr } = await sb
+        .from("travellers")
+        .select("id")
+        .eq("user_id", user_id)
+        .maybeSingle();
+      if (!travellerErr && travellerRow?.id) {
+        travellerRowId = travellerRow.id as string;
+      }
+    }
+
     // Align to your exact columns:
     // id, operator_id, full_name, email, country, phone, message, source_page,
     // created_at, date, trip_id, trip_title, pax, name, note, traveller_id, itinerary, anon_id, user_id
@@ -118,7 +131,7 @@ export async function POST(req: NextRequest) {
         budgetRange: itinerary.budgetRange || null,
       }),
 
-      traveller_id: user_id || null,
+      traveller_id: travellerRowId,
       user_id: user_id || null,
 
       anon_id: anon_id || null,
