@@ -1409,7 +1409,44 @@ export default function TravellerQuotesPage() {
                         whiteSpace: "pre-line",
                       }}
                     >
-                      {selectedEnquiry.note}
+                      {(() => {
+                        try {
+                          const parsed = JSON.parse(selectedEnquiry.note);
+                          return (
+                            <div style={{ display: "grid", gap: 6 }}>
+                              {parsed.summary && <p style={{ margin: 0, fontWeight: 700 }}>{parsed.summary}</p>}
+                              <div style={{ display: "grid", gap: 4, fontSize: 12.5 }}>
+                                {parsed.destination && (
+                                  <div>
+                                    <strong>Destinations: </strong>
+                                    <span>{parsed.destination}</span>
+                                  </div>
+                                )}
+                                {parsed.daysCount && (
+                                  <div>
+                                    <strong>Days: </strong>
+                                    <span>{parsed.daysCount}</span>
+                                  </div>
+                                )}
+                                {parsed.travelDate && (
+                                  <div>
+                                    <strong>Preferred dates: </strong>
+                                    <span>{parsed.travelDate}</span>
+                                  </div>
+                                )}
+                                {parsed.budgetRange && (
+                                  <div>
+                                    <strong>Budget: </strong>
+                                    <span>{parsed.budgetRange}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        } catch {
+                          return selectedEnquiry.note;
+                        }
+                      })()}
                     </div>
                   </div>
                 )}
