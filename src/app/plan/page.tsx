@@ -308,18 +308,17 @@ export default function PlanPage() {
   const [travelStyle, setTravelStyle] = useState<string>("Culture & Local");
 
   // prompt
-  const [prompt, setPrompt] = useState("");
+const [prompt, setPrompt] = useState("");
 
-// state
-const [generating, setGenerating] = useState(false);
-const [sending, setSending] = useState(false);
-const [result, setResult] = useState<ItineraryResult | null>(null);
-const [toast, setToast] = useState<string | null>(null);
-const [showLoginModal, setShowLoginModal] = useState(false);
+  // state
+  const [generating, setGenerating] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [result, setResult] = useState<ItineraryResult | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
-// UI
-const [showContext, setShowContext] = useState(false);
-const [showDownload, setShowDownload] = useState(false);
+  // UI
+  const [showContext, setShowContext] = useState(false);
 
   // logs
   const [log, setLog] = useState<Msg[]>([]);
@@ -511,46 +510,6 @@ const [showDownload, setShowDownload] = useState(false);
       setGenerating(false);
     }
   }
-
-  function ensureEmailForPdf() {
-    const e = email.trim().toLowerCase();
-    if (!isValidEmail(e)) {
-      setToast("Weka email sahihi ili upakue PDF.");
-      setShowDownload(true);
-      setTimeout(() => {
-        const el = document.getElementById("sc-email") as HTMLInputElement | null;
-        el?.focus();
-      }, 80);
-      return false;
-    }
-    return true;
-  }
-
-  async function downloadPdf() {
-    if (!result) return;
-    setToast(null);
-    if (!ensureEmailForPdf()) return;
-
-    void saveLeadNonBlocking("pdf_download", prompt.trim(), { itinerary_title: result.title });
-
-    try {
-      const res = await fetch("/api/itinerary/pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          itinerary: result,
-          travellerName: safeFullName(fullName),
-          email: email.trim().toLowerCase(),
-          title: result.title,
-          subtitle: "Prepared by Safari Connector",
-        }),
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.error || "PDF generation failed.");
-      }
-
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
 
@@ -698,9 +657,8 @@ const [showDownload, setShowDownload] = useState(false);
 
         @media (max-width: 640px) {
           .sc-grid2 { grid-template-columns: 1fr !important; }
-          .sc-actionGrid { grid-template-columns: 1fr !important; }
-          .sc-cols { grid-template-columns: 1fr !important; }
-        }
+            .sc-cols { grid-template-columns: 1fr !important; }
+          }
 
         @media (max-width: 520px) {
           .sc-plan-main { padding: 14px 12px 22px !important; }
@@ -879,22 +837,19 @@ const [showDownload, setShowDownload] = useState(false);
               <div className="sc-panelHeader" style={S.panelHeader}>
                 <div>
                   <div style={S.panelTitle}>Results</div>
-                  <div style={S.panelSub}>{result ? "Review output, then send or download." : "Run to view results."}</div>
+                  <div style={S.panelSub}>{result ? "Review output, then send to an operator." : "Run to view results."}</div>
                 </div>
 
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                   <button type="button" style={S.panelBtn} onClick={copyText} disabled={!result}>
                     Copy
                   </button>
-                  <button type="button" style={S.panelBtn} onClick={() => setShowDownload((v) => !v)} disabled={!result}>
-                    PDF
-                  </button>
                 </div>
               </div>
 
               <div style={S.actionBar}>
               <div style={S.actionTitle}>Send to operator</div>
-              <div style={S.actionSub}>Select operator, capture contact, submit for quote.</div>
+                <div style={S.actionSub}>Select operator, then send your itinerary.</div>
 
               {!user && <div style={S.warnBox}>Please log in or sign up to send this itinerary to an operator.</div>}
 
@@ -928,50 +883,21 @@ const [showDownload, setShowDownload] = useState(false);
                   )}
                 </div>
 
-                <div className="sc-actionGrid" style={S.actionGrid}>
-                  <input
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    style={S.actionInput}
-                    placeholder="Full name (required)"
-                  />
-                  <input
-                    id="sc-email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    style={{
-                      ...S.actionInput,
-                      borderColor: email && !isValidEmail(email) ? BRAND.warn : BRAND.line,
-                    }}
-                    placeholder="Email (required)"
-                  />
-                </div>
+                <button
+                  type="button"
+                  onClick={sendToOperator}
+                  disabled={!result || sending || !selectedOperatorId}
+                  style={{
+                    ...S.sendBtn,
+                    opacity: !result || sending || !selectedOperatorId ? 0.6 : 1,
+                    cursor: !result || sending || !selectedOperatorId ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {sending ? "Sending..." : user ? "Send to operator" : "Log in to send"}
+                </button>
 
-              <button
-                type="button"
-                onClick={sendToOperator}
-                disabled={!result || sending || !selectedOperatorId}
-                style={{
-                  ...S.sendBtn,
-                  opacity: !result || sending || !selectedOperatorId ? 0.6 : 1,
-                  cursor: !result || sending || !selectedOperatorId ? "not-allowed" : "pointer",
-                }}
-              >
-                {sending ? "Sending..." : user ? "Send to operator" : "Log in to send"}
-              </button>
-
-              {!selectedOperatorId && <div style={S.sendHint}>Select an operator to enable sending.</div>}
+                {!selectedOperatorId && <div style={S.sendHint}>Select an operator to enable sending.</div>}
               </div>
-
-              {showDownload && (
-                <div style={S.capture}>
-                  <div style={S.captureTitle}>PDF download</div>
-                  <div style={S.captureSub}>Email is required for PDF.</div>
-                  <button type="button" style={S.downloadBtn} onClick={downloadPdf} disabled={!result}>
-                    Download branded PDF
-                  </button>
-                </div>
-              )}
 
               <div style={S.panelScroll}>
                 {!result && !generating && (
@@ -1322,16 +1248,9 @@ const S: Record<string, React.CSSProperties> = {
     fontSize: 12.5,
   },
 
-  actionGrid: { marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 },
-  actionInput: { width: "100%", border: `1px solid ${BRAND.line}`, borderRadius: 14, padding: "10px 12px", outline: "none", background: "#fff", fontSize: 13.5 },
-
   sendBtn: { marginTop: 10, width: "100%", borderRadius: 999, border: `1px solid ${BRAND.green}`, background: BRAND.green, color: "#fff", padding: "10px 12px", fontWeight: 1000 },
   sendHint: { marginTop: 8, color: BRAND.muted, fontSize: 12, fontWeight: 800 },
 
-  capture: { padding: 14, borderBottom: `1px solid ${BRAND.line}`, background: "#fff", flex: "0 0 auto" },
-  captureTitle: { fontWeight: 1000 },
-  captureSub: { marginTop: 4, color: BRAND.muted, fontSize: 12 },
-  downloadBtn: { marginTop: 10, width: "100%", borderRadius: 999, border: `1px solid ${BRAND.green}`, background: BRAND.green, color: "#fff", padding: "10px 12px", fontWeight: 1000, cursor: "pointer" },
 
   panelScroll: { padding: 14, overflow: "auto", flex: 1, minHeight: 0, WebkitOverflowScrolling: "touch" },
 
@@ -1431,3 +1350,5 @@ if (typeof document !== "undefined") {
     document.head.appendChild(s);
   }
 }
+
+
