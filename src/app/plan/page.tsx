@@ -317,6 +317,22 @@ const [prompt, setPrompt] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
 
+  const derivedName = (fallback = "Traveller") => {
+    if (fullName && fullName.trim() && fullName.trim().toLowerCase() !== "traveller") return fullName.trim();
+    const meta: any = user?.user_metadata || {};
+    const composed =
+      meta.full_name ||
+      meta.name ||
+      `${meta.first_name ?? ""} ${meta.last_name ?? ""}`.trim();
+    const fromEmail = (user?.email || meta.email || "").split("@")[0] || "";
+    return (composed || fromEmail || fallback).trim() || fallback;
+  };
+
+  const derivedEmail = () => {
+    const meta: any = user?.user_metadata || {};
+    return (email || user?.email || meta.email || "").trim().toLowerCase();
+  };
+
   // UI
   const [showContext, setShowContext] = useState(false);
 
@@ -553,21 +569,17 @@ const [prompt, setPrompt] = useState("");
       return;
     }
 
+    const travellerEmail = derivedEmail();
+    const travellerName = derivedName();
+
     if (!user) {
       setToast("Please log in or sign up to send this itinerary.");
       setShowLoginModal(true);
       return;
     }
 
-    const nm = safeFullName(fullName);
-    const em = email.trim().toLowerCase();
-
-    if (!nm || nm === "Traveller") {
-      setToast("Weka jina la mteja (Full name) kabla ya kutuma kwa operator.");
-      return;
-    }
-    if (!isValidEmail(em)) {
-      setToast("Email inahitajika na lazima iwe sahihi.");
+    if (!isValidEmail(travellerEmail)) {
+      setToast("Your account email looks invalid. Please update your profile email.");
       return;
     }
 
@@ -580,8 +592,8 @@ const [prompt, setPrompt] = useState("");
         anon_id: anonId,
         user_id: user?.id ?? null,
 
-        traveller_name: nm,
-        traveller_email: em,
+        traveller_name: travellerName,
+        traveller_email: travellerEmail,
         phone: null,
 
         destination: result.destination || destination,
