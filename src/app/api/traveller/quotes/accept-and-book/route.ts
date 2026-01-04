@@ -5,6 +5,16 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
+const parseNote = (note: string | null | undefined) => {
+  if (!note) return null as any;
+  try {
+    const parsed = JSON.parse(note);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null as any;
+  }
+};
+
 function addDaysISO(dateISO: string, days: number) {
   const d = new Date(dateISO);
   d.setDate(d.getDate() + days);
@@ -47,7 +57,7 @@ export async function POST(req: NextRequest) {
     // 1) Load enquiry & confirm it belongs to this traveller
     const { data: enquiry, error: enqErr } = await supabaseAdmin
       .from("quote_requests")
-      .select("id, trip_id, date, pax, email")
+      .select("id, trip_id, operator_id, trip_title, note, date, pax, email")
       .eq("id", enquiry_id)
       .maybeSingle();
 
@@ -59,8 +69,45 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
     }
 
+    // If AI enquiry was missing trip_id, auto-create a minimal trip so bookings work
     if (!enquiry.trip_id) {
-      return NextResponse.json({ ok: false, error: "Enquiry missing trip_id" }, { status: 400 });
+      if (!enquiry.operator_id) {
+        return NextResponse.json({ ok: false, error: "Enquiry missing operator_id" }, { status: 400 });
+      }
+
+      const parsed = parseNote(enquiry.note);
+      const derivedTitle = (enquiry.trip_title || parsed?.summary || "Custom AI itinerary").toString().slice(0, 140);
+      const derivedDuration =
+        parsed?.daysCount && Number(parsed.daysCount) > 0 ? Number(parsed.daysCount) : 7;
+      const derivedStyle = parsed?.travelStyle || parsed?.style || null;
+
+      const { data: tripRow, error: tripErr } = await supabaseAdmin
+        .from("trips")
+        .insert([
+          {
+            operator_id: enquiry.operator_id,
+            title: derivedTitle,
+            duration: derivedDuration,
+            style: derivedStyle,
+            overview: parsed?.summary || null,
+          },
+        ])
+        .select("id")
+        .single();
+
+      if (tripErr || !tripRow) {
+        return NextResponse.json(
+          { ok: false, error: tripErr?.message || "Failed to prepare a trip for this enquiry" },
+          { status: 500 }
+        );
+      }
+
+      enquiry.trip_id = (tripRow as any).id as string;
+
+      await supabaseAdmin
+        .from("quote_requests")
+        .update({ trip_id: enquiry.trip_id, trip_title: derivedTitle })
+        .eq("id", enquiry_id);
     }
 
     // 2) Load quote and confirm it matches enquiry

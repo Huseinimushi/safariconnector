@@ -113,6 +113,16 @@ const persistOpenedEnquiries = (map: Record<string, boolean>) => {
   }
 };
 
+const parseNote = (note: string | null) => {
+  if (!note) return null as any;
+  try {
+    const parsed = JSON.parse(note);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null as any;
+  }
+};
+
 const getTravellerStatusLabel = (hasQuote: boolean, hasBooking: boolean) => {
   if (hasBooking) return "Booking created";
   if (hasQuote) return "Quote sent";
@@ -540,7 +550,7 @@ export default function OperatorsQuotesClient() {
    */
   const handleSaveQuote: React.FormEventHandler<HTMLFormElement> = async (e) => {
     e.preventDefault();
-    if (!selectedEnquiryId || !operator || savingQuote) return;
+    if (!selectedEnquiryId || !operator || savingQuote || !selectedEnquiry) return;
 
     setSavingQuote(true);
     setErrorMsg(null);
@@ -561,6 +571,51 @@ export default function OperatorsQuotesClient() {
     }
 
     try {
+      // If this is an AI enquiry without a trip, create a minimal draft trip and link it
+      let ensuredTripId = selectedEnquiry.trip_id;
+      if (!ensuredTripId) {
+        const parsed = parseNote(selectedEnquiry.note);
+        const derivedTitle =
+          (selectedEnquiry.trip_title || parsed?.summary || "Custom AI itinerary").toString().slice(0, 140);
+        const derivedDuration =
+          parsed?.daysCount && Number(parsed.daysCount) > 0 ? Number(parsed.daysCount) : 7;
+        const derivedStyle = parsed?.travelStyle || parsed?.style || null;
+
+        const { data: tripRow, error: tripErr } = await supabase
+          .from("trips")
+          .insert([
+            {
+              operator_id: operator.id,
+              title: derivedTitle,
+              duration: derivedDuration,
+              style: derivedStyle,
+              overview: parsed?.summary || null,
+            },
+          ])
+          .select("id, title")
+          .single();
+
+        if (tripErr || !tripRow) {
+          console.error("operator auto-create trip for AI enquiry error:", tripErr);
+          setErrorMsg("Could not create a trip for this AI enquiry. Please try again.");
+          setSavingQuote(false);
+          return;
+        }
+
+        ensuredTripId = (tripRow as any).id as string;
+
+        const { error: linkErr } = await supabase
+          .from("quote_requests")
+          .update({ trip_id: ensuredTripId, trip_title: derivedTitle })
+          .eq("id", selectedEnquiryId);
+
+        if (linkErr) console.warn("operator link trip_id to enquiry error:", linkErr);
+
+        setEnquiries((prev) =>
+          prev.map((q) => (q.id === selectedEnquiryId ? { ...q, trip_id: ensuredTripId, trip_title: derivedTitle } : q))
+        );
+      }
+
       if (!quote) {
         const { data, error } = await supabase
           .from("quotes")
