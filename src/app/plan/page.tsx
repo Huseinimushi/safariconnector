@@ -469,7 +469,6 @@ const [prompt, setPrompt] = useState("");
 
     setGenerating(true);
     setResult(null);
-    setShowDownload(false);
 
     setLog((p) => [...p, { role: "user", content: promptText }]);
     void saveLeadNonBlocking(intent.tripType === "day_trip" ? "generated_day_trip" : "generated", promptText, {
