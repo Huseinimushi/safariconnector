@@ -568,7 +568,6 @@ const [prompt, setPrompt] = useState("");
     }
     if (!isValidEmail(em)) {
       setToast("Email inahitajika na lazima iwe sahihi.");
-      setShowDownload(true);
       return;
     }
 
