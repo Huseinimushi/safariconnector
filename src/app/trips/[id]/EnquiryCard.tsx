@@ -41,6 +41,7 @@ export default function EnquiryCard({
   const [busy, setBusy] = useState(false);
   const [ok, setOk] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   // local state for auto-filled fields
   const [name, setName] = useState(initialName ?? "");
@@ -327,13 +328,35 @@ export default function EnquiryCard({
 
         {/* Kama mtu haja-login, muonyeshe sehemu ya ku-create password */}
         {!user && (
-          <input
-            name="password"
-            type="password"
-            placeholder="Create a password (min 6 characters)"
-            required
-            style={input}
-          />
+          <div style={{ position: "relative" }}>
+            <input
+              name="password"
+              type={showPassword ? "text" : "password"}
+              placeholder="Create a password (min 6 characters)"
+              required
+              style={{ ...input, paddingRight: 80 }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              style={{
+                position: "absolute",
+                right: 8,
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: "transparent",
+                border: "1px solid #d1d5db",
+                borderRadius: 8,
+                padding: "6px 10px",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+                color: BRAND.primary,
+              }}
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
         )}
 
         <div style={twoCol}>

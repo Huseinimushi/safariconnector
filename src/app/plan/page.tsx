@@ -1,4 +1,4 @@
-// src/app/plan/page.tsx
+﻿// src/app/plan/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -504,24 +504,10 @@ const [prompt, setPrompt] = useState("");
       setLog((p) => [...p, { role: "assistant", content: `Generated: ${normalized.title}` }]);
       setToast("Generated. Review on the right.");
     } catch (e: any) {
-      setToast(`❌ ${e?.message || "Failed to generate itinerary."}`);
+      setToast(`Failed to generate itinerary: ${e?.message || "Unknown error."}`);
       setResult(null);
     } finally {
       setGenerating(false);
-    }
-  }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `SafariConnector-Itinerary-${safeFullName(fullName).replace(/\s+/g, "_")}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e: any) {
-      setToast(`❌ ${e?.message || "PDF download failed."}`);
     }
   }
 
@@ -1350,5 +1336,6 @@ if (typeof document !== "undefined") {
     document.head.appendChild(s);
   }
 }
+
 
 

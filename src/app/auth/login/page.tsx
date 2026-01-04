@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
+  const [showPass, setShowPass] = useState(false);
   const [mode, setMode] = useState<"magic" | "password">("magic");
   const [loading, setLoading] = useState(false);
 
@@ -84,12 +85,21 @@ export default function LoginPage() {
       {mode === "password" && (
         <label className="block">
           <div className="text-sm mb-1">Password</div>
-          <input
-            className="border rounded p-2 w-full"
-            type="password"
-            value={pass}
-            onChange={(e) => setPass(e.target.value)}
-          />
+          <div className="relative">
+            <input
+              className="border rounded p-2 w-full pr-16"
+              type={showPass ? "text" : "password"}
+              value={pass}
+              onChange={(e) => setPass(e.target.value)}
+            />
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-emerald-700"
+              onClick={() => setShowPass((v) => !v)}
+            >
+              {showPass ? "Hide" : "Show"}
+            </button>
+          </div>
         </label>
       )}
 

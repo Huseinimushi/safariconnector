@@ -16,6 +16,8 @@ export default function UpdatePasswordPage() {
 
   const [newPassword, setNewPassword] = useState("");
   const [newPassword2, setNewPassword2] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPassword2, setShowPassword2] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -181,20 +183,40 @@ export default function UpdatePasswordPage() {
             >
               New password
             </label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Enter new password"
-              style={{
-                width: "100%",
-                padding: 10,
-                fontSize: 14,
-                borderRadius: 8,
-                border: "1px solid #D1D5DB",
-                marginBottom: 10,
-              }}
-            />
+            <div style={{ position: "relative" }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Enter new password"
+                style={{
+                  width: "100%",
+                  padding: "10px 40px 10px 10px",
+                  fontSize: 14,
+                  borderRadius: 8,
+                  border: "1px solid #D1D5DB",
+                  marginBottom: 10,
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                style={{
+                  position: "absolute",
+                  right: 8,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "transparent",
+                  border: "none",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  color: BRAND_GREEN,
+                }}
+              >
+                {showPassword ? "Hide" : "Show"}
+              </button>
+            </div>
 
             <label
               style={{
@@ -207,20 +229,40 @@ export default function UpdatePasswordPage() {
             >
               Confirm new password
             </label>
-            <input
-              type="password"
-              value={newPassword2}
-              onChange={(e) => setNewPassword2(e.target.value)}
-              placeholder="Repeat new password"
-              style={{
-                width: "100%",
-                padding: 10,
-                fontSize: 14,
-                borderRadius: 8,
-                border: "1px solid #D1D5DB",
-                marginBottom: 16,
-              }}
-            />
+            <div style={{ position: "relative" }}>
+              <input
+                type={showPassword2 ? "text" : "password"}
+                value={newPassword2}
+                onChange={(e) => setNewPassword2(e.target.value)}
+                placeholder="Repeat new password"
+                style={{
+                  width: "100%",
+                  padding: "10px 40px 10px 10px",
+                  fontSize: 14,
+                  borderRadius: 8,
+                  border: "1px solid #D1D5DB",
+                  marginBottom: 16,
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword2((v) => !v)}
+                style={{
+                  position: "absolute",
+                  right: 8,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "transparent",
+                  border: "none",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  color: BRAND_GREEN,
+                }}
+              >
+                {showPassword2 ? "Hide" : "Show"}
+              </button>
+            </div>
 
             <button
               type="submit"

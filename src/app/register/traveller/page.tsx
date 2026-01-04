@@ -15,6 +15,8 @@ export default function TravellerRegisterPage() {
   const [country, setCountry] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPassword2, setShowPassword2] = useState(false);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -231,42 +233,82 @@ export default function TravellerRegisterPage() {
         >
           Password
         </label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Create password"
-          style={{
-            width: "100%",
-            marginTop: 4,
-            marginBottom: 12,
-            padding: 10,
-            fontSize: 14,
-            borderRadius: 8,
-            border: "1px solid #D1D5DB",
-          }}
-        />
+        <div style={{ position: "relative" }}>
+          <input
+            type={showPassword ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Create password"
+            style={{
+              width: "100%",
+              marginTop: 4,
+              marginBottom: 12,
+              padding: "10px 40px 10px 10px",
+              fontSize: 14,
+              borderRadius: 8,
+              border: "1px solid #D1D5DB",
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword((v) => !v)}
+            style={{
+              position: "absolute",
+              right: 8,
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "transparent",
+              border: "none",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              color: BRAND_GREEN,
+            }}
+          >
+            {showPassword ? "Hide" : "Show"}
+          </button>
+        </div>
 
         <label
           style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}
         >
           Confirm password
         </label>
-        <input
-          type="password"
-          value={password2}
-          onChange={(e) => setPassword2(e.target.value)}
-          placeholder="Repeat password"
-          style={{
-            width: "100%",
-            marginTop: 4,
-            marginBottom: 20,
-            padding: 10,
-            fontSize: 14,
-            borderRadius: 8,
-            border: "1px solid #D1D5DB",
-          }}
-        />
+        <div style={{ position: "relative" }}>
+          <input
+            type={showPassword2 ? "text" : "password"}
+            value={password2}
+            onChange={(e) => setPassword2(e.target.value)}
+            placeholder="Repeat password"
+            style={{
+              width: "100%",
+              marginTop: 4,
+              marginBottom: 20,
+              padding: "10px 40px 10px 10px",
+              fontSize: 14,
+              borderRadius: 8,
+              border: "1px solid #D1D5DB",
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword2((v) => !v)}
+            style={{
+              position: "absolute",
+              right: 8,
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "transparent",
+              border: "none",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              color: BRAND_GREEN,
+            }}
+          >
+            {showPassword2 ? "Hide" : "Show"}
+          </button>
+        </div>
 
         <button
           onClick={handleRegister}

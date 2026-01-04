@@ -13,6 +13,7 @@ export default function TravellerLoginPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -131,24 +132,42 @@ export default function TravellerLoginPage() {
             }}
           />
 
-          <label
-            style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}
-          >
+          <label style={{ fontSize: 12, fontWeight: 600, color: "#374151" }}>
             Password
           </label>
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={{
-              width: "100%",
-              marginTop: 4,
-              padding: 10,
-              fontSize: 14,
-              borderRadius: 8,
-              border: "1px solid #D1D5DB",
-            }}
-          />
+          <div style={{ position: "relative" }}>
+            <input
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={{
+                width: "100%",
+                marginTop: 4,
+                padding: "10px 40px 10px 10px",
+                fontSize: 14,
+                borderRadius: 8,
+                border: "1px solid #D1D5DB",
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              style={{
+                position: "absolute",
+                right: 8,
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: "transparent",
+                border: "none",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                color: "#0B6B3A",
+              }}
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
 
           {/* Forgot password link */}
           <div

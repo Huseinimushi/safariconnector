@@ -15,6 +15,7 @@ export default function AdminLoginPage() {
 
   const [email, setEmail] = useState("admin@safariconnector.com");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -156,17 +157,37 @@ export default function AdminLoginPage() {
                 color: "#374151",
                 marginBottom: 4,
               }}
-            >
-              Password
-            </label>
+          >
+            Password
+          </label>
+          <div style={{ position: "relative" }}>
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              style={inputStyle}
+              style={{ ...inputStyle, paddingRight: 40 }}
               placeholder="••••••••"
               autoComplete="current-password"
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              style={{
+                position: "absolute",
+                right: 8,
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: "transparent",
+                border: "none",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+                color: BRAND_GREEN,
+              }}
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
           </div>
 
           <button
